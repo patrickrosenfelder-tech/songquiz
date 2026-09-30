@@ -6,8 +6,9 @@ A multiplayer music recognition game that challenges players to identify songs b
 
 ```
 songquiz/
+├── package.json      # Root orchestrator: `npm install && npm run dev` runs everything
 ├── backend/          # Express.js server with WebSocket + music providers
-├── frontend/         # Next.js web application with React components
+├── frontend/         # Next.js web application with React components (the playable game)
 ├── db/               # Database migrations and schema
 ├── docker-compose.yml
 └── README.md
@@ -16,11 +17,30 @@ songquiz/
 ## Quick Start
 
 ### Prerequisites
-- Docker and Docker Compose
-- Node.js 18+ (for local development without Docker)
-- PostgreSQL 15 (for local development without Docker)
+- Node.js 18+
 
-### Using Docker Compose (Recommended)
+### Run it
+
+```bash
+npm install
+npm run dev
+```
+
+This installs and starts both apps together:
+- **Frontend (the playable game)** on `http://localhost:3000` — self-contained: 10-round
+  game loop, scoring, and a static catalog of real song preview clips. No API keys,
+  database, or the backend below are required to play it.
+- **Backend (audio preview API)** on `http://localhost:3001` — a separate Express/WebSocket
+  service exposing Deezer/Apple Music preview search (`/api/preview/search`). Deezer works
+  with no credentials; it isn't wired into the frontend game loop yet (see Known Issues).
+
+Run them individually with `npm run dev:frontend` / `npm run dev:backend` if you only need one.
+
+PostgreSQL and Docker Compose are optional — only needed if you want to exercise the
+`db/` schema or the multi-service Docker setup described below; the MVP game loop above
+doesn't touch the database.
+
+### Using Docker Compose (optional)
 
 ```bash
 docker-compose up
@@ -30,29 +50,6 @@ This will start:
 - **PostgreSQL** on `localhost:5432`
 - **Backend API** on `http://localhost:3001`
 - **Frontend** on `http://localhost:3000`
-
-### Local Development
-
-#### Backend
-```bash
-cd backend
-npm install
-npm run dev
-```
-
-Requires PostgreSQL running on `localhost:5432` with:
-- User: `songquiz`
-- Password: `songquiz_dev`
-- Database: `songquiz`
-
-#### Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Frontend will connect to backend at `http://localhost:3001`.
 
 ## Architecture
 
@@ -84,8 +81,10 @@ Frontend will connect to backend at `http://localhost:3001`.
 - `POST /api/game/next` - Advance to next round
 - `POST /api/game/guess` - Submit an answer for current round
 
-### Music Preview
-- `GET /preview?query={query}` - Get audio preview for a track
+### Music Preview (backend, standalone — not yet called by the frontend game loop)
+- `GET /api/preview/search?q={query}` - Search all providers for tracks matching a query
+- `GET /api/preview/round?q={query}` - Get a single track picked for a game round
+- `GET /health` - Backend health check
 
 ### WebSocket
 - `ws://localhost:3001/game` - Real-time game room events
@@ -148,8 +147,15 @@ PostgreSQL will apply migrations on container startup via the volume mount.
 
 ## Known Issues & Future Work
 
-- Music providers require API credentials (Apple Music token, Deezer API key)
-- Session state is currently in-memory on frontend; needs DB persistence
+- Deezer preview search works with no credentials; only the Apple Music fallback
+  provider requires a token (`APPLE_MUSIC_TOKEN`) — set it only if you want that
+  secondary path
+- The frontend game loop uses a static, hardcoded song catalog (`frontend/lib/catalog.ts`)
+  rather than calling the backend's `/api/preview` endpoints — wiring the two together
+  (live search instead of the static catalog) is the next integration step
+- Session state is in-memory per Node process (kept alive via a `globalThis` singleton
+  so it survives Next.js's per-route bundling in dev/prod); needs DB/Redis persistence
+  for multi-instance deployment
 - WebSocket handlers implemented but not fully wired to frontend UI
 - Rate limiting implemented server-side but not tested under load
 
