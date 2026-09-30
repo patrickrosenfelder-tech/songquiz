@@ -1,15 +1,20 @@
+const RateLimiter = require('./RateLimiter');
+const Cache = require('./Cache');
+
 /**
  * Common interface every music preview provider must implement, so the
  * fallback routing in MusicProviderService can treat providers
  * interchangeably regardless of the upstream API's own shape.
  */
 class MusicProvider {
-  constructor(name, timeoutMs) {
+  constructor(name, timeoutMs, { cacheTtlMs = 6 * 60 * 60 * 1000, minRequestIntervalMs = 100 } = {}) {
     if (this.constructor === MusicProvider) {
       throw new Error('MusicProvider is abstract and cannot be instantiated directly');
     }
     this.name = name;
     this.timeoutMs = timeoutMs;
+    this.cache = new Cache(cacheTtlMs);
+    this.rateLimiter = new RateLimiter(minRequestIntervalMs);
   }
 
   /**
@@ -22,6 +27,7 @@ class MusicProvider {
   }
 
   async fetchJson(url) {
+    await this.rateLimiter.wait();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {

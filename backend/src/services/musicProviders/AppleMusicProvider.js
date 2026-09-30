@@ -10,11 +10,15 @@ const MusicProvider = require('./MusicProvider');
  * Docs: https://performance-partners.apple.com/search-api
  */
 class AppleMusicProvider extends MusicProvider {
-  constructor(timeoutMs) {
-    super('apple', timeoutMs);
+  constructor(timeoutMs, options) {
+    super('apple', timeoutMs, options);
   }
 
   async search(query) {
+    const cacheKey = `search:${query.toLowerCase()}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached) return cached;
+
     const url = `https://itunes.apple.com/search?media=music&entity=song&limit=25&term=${encodeURIComponent(query)}`;
     const data = await this.fetchJson(url);
 
@@ -22,7 +26,7 @@ class AppleMusicProvider extends MusicProvider {
       throw new Error('apple returned an unexpected payload');
     }
 
-    return data.results
+    const results = data.results
       .filter((track) => track.previewUrl)
       .map((track) => ({
         id: String(track.trackId),
@@ -34,6 +38,9 @@ class AppleMusicProvider extends MusicProvider {
         previewUrl: track.previewUrl,
         durationMs: typeof track.trackTimeMillis === 'number' ? track.trackTimeMillis : null,
       }));
+
+    this.cache.set(cacheKey, results);
+    return results;
   }
 }
 
