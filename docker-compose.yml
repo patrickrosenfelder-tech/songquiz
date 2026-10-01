@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: songquiz
+      POSTGRES_PASSWORD: songquiz_dev
+      POSTGRES_DB: songquiz
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U songquiz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://songquiz:songquiz_dev@postgres:5432/songquiz
+      PORT: 3001
+      CORS_ORIGIN: http://localhost:3000
+      APPLE_MUSIC_TOKEN: ${APPLE_MUSIC_TOKEN:-dev-token}
+      DEEZER_API_KEY: ${DEEZER_API_KEY:-dev-key}
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src
+    command: npm run dev
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXT_PUBLIC_WS_URL: ws://localhost:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/.next
+    command: npm run dev
+
+volumes:
+  postgres_data:
