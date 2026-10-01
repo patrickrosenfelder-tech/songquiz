@@ -31,7 +31,7 @@ npm start        # or: npm run dev (nodemon)
 npm test
 ```
 
-Server listens on `PORT` (default 3001): REST on `/api/preview/*` and `/health`,
+Server listens on `PORT` (default 4000): REST on `/api/preview/*` and `/health`,
 WebSocket game protocol on `/ws`.
 
 ### Audio preview routing

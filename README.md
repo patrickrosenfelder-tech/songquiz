@@ -27,10 +27,10 @@ npm run dev
 ```
 
 This installs and starts both apps together:
-- **Frontend (the playable game)** on `http://localhost:3000` — self-contained: 10-round
+- **Frontend (the playable game)** on `http://localhost:4001` — self-contained: 10-round
   game loop, scoring, and a static catalog of real song preview clips. No API keys,
   database, or the backend below are required to play it.
-- **Backend (audio preview API)** on `http://localhost:3001` — a separate Express/WebSocket
+- **Backend (audio preview API)** on `http://localhost:4000` — a separate Express/WebSocket
   service exposing Deezer/Apple Music preview search (`/api/preview/search`). Deezer works
   with no credentials; it isn't wired into the frontend game loop yet (see Known Issues).
 
@@ -48,8 +48,8 @@ docker-compose up
 
 This will start:
 - **PostgreSQL** on `localhost:5432`
-- **Backend API** on `http://localhost:3001`
-- **Frontend** on `http://localhost:3000`
+- **Backend API** on `http://localhost:4000`
+- **Frontend** on `http://localhost:4001`
 
 ## Architecture
 
@@ -87,7 +87,7 @@ This will start:
 - `GET /health` - Backend health check
 
 ### WebSocket
-- `ws://localhost:3001/game` - Real-time game room events
+- `ws://localhost:4000/game` - Real-time game room events
 
 ## Configuration
 
@@ -96,17 +96,17 @@ This will start:
 **Backend** (`.env`):
 ```
 NODE_ENV=development
-PORT=3001
+PORT=4000
 DATABASE_URL=postgresql://user:pass@localhost/songquiz
-CORS_ORIGIN=http://localhost:3000
+CORS_ORIGIN=http://localhost:4001
 APPLE_MUSIC_TOKEN=<your-token>
 DEEZER_API_KEY=<your-key>
 ```
 
 **Frontend** (`.env.local`):
 ```
-NEXT_PUBLIC_API_URL=http://localhost:3001
-NEXT_PUBLIC_WS_URL=ws://localhost:3001
+NEXT_PUBLIC_API_URL=http://localhost:4000
+NEXT_PUBLIC_WS_URL=ws://localhost:4000
 ```
 
 ## Development Workflow
