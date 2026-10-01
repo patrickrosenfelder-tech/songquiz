@@ -8,15 +8,10 @@ yarn.lock
 # Build outputs
 dist/
 build/
-*.js
-*.jsx
-*.ts
-*.tsx
 
 # Logs
 logs
 *.log
-.log
 
 # Environment variables
 .env
@@ -48,13 +43,10 @@ backend/dist/
 .next/
 out/
 .nuxt/
-.cache/
 .vuepress/dist/
 .serverless/
 .fusebox/
 .dynamodb/
-.env.local
-.env.*.local
 
 # OS
 Thumbs.db
