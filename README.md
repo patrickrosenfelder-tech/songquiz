@@ -27,7 +27,7 @@ npm run dev
 ```
 
 This installs and starts both apps together:
-- **Frontend (the playable game)** on `http://localhost:3000` — self-contained: 10-round
+- **Frontend (the playable game)** on `http://localhost:4000` — self-contained: 10-round
   game loop, scoring, and a static catalog of real song preview clips. No API keys,
   database, or the backend below are required to play it.
 - **Backend (audio preview API)** on `http://localhost:3001` — a separate Express/WebSocket
@@ -49,7 +49,7 @@ docker-compose up
 This will start:
 - **PostgreSQL** on `localhost:5432`
 - **Backend API** on `http://localhost:3001`
-- **Frontend** on `http://localhost:3000`
+- **Frontend** on `http://localhost:4000`
 
 ## Architecture
 
@@ -98,7 +98,7 @@ This will start:
 NODE_ENV=development
 PORT=3001
 DATABASE_URL=postgresql://user:pass@localhost/songquiz
-CORS_ORIGIN=http://localhost:3000
+CORS_ORIGIN=http://localhost:4000
 APPLE_MUSIC_TOKEN=<your-token>
 DEEZER_API_KEY=<your-key>
 ```
