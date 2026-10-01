@@ -1,0 +1,29 @@
+{
+  "name": "songquiz-backend",
+  "version": "0.1.0",
+  "description": "TuneDuel Backend WebSocket Server",
+  "main": "dist/index.js",
+  "scripts": {
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "test": "jest"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "cors": "^2.8.5",
+    "axios": "^1.6.0",
+    "sqlite3": "^5.1.6",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.2",
+    "ts-node": "^10.9.1",
+    "@types/node": "^20.5.0",
+    "@types/express": "^4.17.17",
+    "jest": "^29.6.4",
+    "ts-jest": "^29.1.1",
+    "@types/jest": "^29.5.3"
+  }
+}

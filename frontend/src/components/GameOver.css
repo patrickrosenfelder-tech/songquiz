@@ -1,0 +1,128 @@
+.gameover-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.gameover-box {
+  background: white;
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  max-width: 600px;
+  width: 100%;
+  animation: slideUp 0.3s ease-out;
+  text-align: center;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.gameover-box h2 {
+  font-size: 2.5em;
+  color: #667eea;
+  margin-bottom: 30px;
+}
+
+.final-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 40px;
+  padding: 30px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  color: white;
+}
+
+.score-label {
+  font-size: 1.2em;
+  opacity: 0.9;
+}
+
+.score-value {
+  font-size: 3.5em;
+  font-weight: 700;
+}
+
+.results-section {
+  margin-bottom: 40px;
+  text-align: left;
+}
+
+.results-section h3 {
+  color: #333;
+  font-size: 1.3em;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.results-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.result-item {
+  display: grid;
+  grid-template-columns: 50px 1fr 100px;
+  gap: 15px;
+  align-items: center;
+  padding: 15px;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.result-rank {
+  font-size: 1.2em;
+  color: #667eea;
+  font-weight: 700;
+}
+
+.result-name {
+  text-align: left;
+  color: #333;
+}
+
+.result-score {
+  text-align: right;
+  color: #4CAF50;
+  font-weight: 700;
+  font-size: 1.1em;
+}
+
+.play-again-button {
+  width: 100%;
+  padding: 15px;
+  font-size: 1.1em;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+.play-again-button:hover {
+  background-color: #45a049;
+}
+
+.game-stats {
+  color: #999;
+  font-size: 0.95em;
+  margin: 0;
+}
