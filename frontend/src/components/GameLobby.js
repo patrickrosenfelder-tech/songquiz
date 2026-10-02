@@ -40,7 +40,7 @@ function GameLobby({ onJoin, onStart, players = [] }) {
           <div className="waiting-section">
             <p className="welcome-message">Welcome, {username}! 🎉</p>
             <div className="players-count">
-              <p>Players joined: {players}</p>
+              <p>Players joined: {Array.isArray(players) ? players.length : players}</p>
             </div>
             <button onClick={handleStart} className="start-button">
               Ready to Play!
