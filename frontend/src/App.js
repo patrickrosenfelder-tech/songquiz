@@ -51,47 +51,48 @@ function App() {
   const handleServerMessage = (message) => {
     switch (message.type) {
       case 'game-joined':
-        setGameData({
-          ...gameData,
+        setGameData((prev) => ({
+          ...prev,
           gameId: message.gameId,
           clientId: message.clientId,
           players: message.gameState.players,
           currentRound: message.gameState.currentRound
-        });
+        }));
         setGameState('lobby');
         break;
 
       case 'round-started':
-        setGameData({
-          ...gameData,
+        setGameData((prev) => ({
+          ...prev,
           currentRound: message.round,
           currentSong: message.song
-        });
+        }));
         setGameState('playing');
         break;
 
       case 'answer-recorded':
         if (message.correct) {
-          setGameData({
-            ...gameData,
-            score: gameData.score + message.points
-          });
+          setGameData((prev) => ({
+            ...prev,
+            score: prev.score + message.points
+          }));
         }
         break;
 
       case 'game-finished':
         setGameState('gameover');
-        setGameData({
-          ...gameData,
+        setGameData((prev) => ({
+          ...prev,
           finalResults: message.results
-        });
+        }));
         break;
 
       case 'player-joined':
-        setGameData({
-          ...gameData,
-          players: message.totalPlayers
-        });
+        // Only a count arrives here; keep `players` an array of Player objects
+        setGameData((prev) => ({
+          ...prev,
+          playerCount: message.totalPlayers
+        }));
         break;
 
       default:
@@ -101,7 +102,7 @@ function App() {
 
   const joinGame = (userId) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      setGameData({ ...gameData, userId });
+      setGameData((prev) => ({ ...prev, userId }));
       ws.send(JSON.stringify({
         type: 'join',
         userId: userId,
@@ -139,6 +140,7 @@ function App() {
           onJoin={joinGame}
           onStart={startGame}
           players={gameData.players}
+          playerCount={gameData.playerCount}
         />
       )}
 

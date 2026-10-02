@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './GameLobby.css';
 
-function GameLobby({ onJoin, onStart, players = [] }) {
+function GameLobby({ onJoin, onStart, players = [], playerCount }) {
   const [username, setUsername] = useState('');
   const [joined, setJoined] = useState(false);
 
@@ -40,7 +40,7 @@ function GameLobby({ onJoin, onStart, players = [] }) {
           <div className="waiting-section">
             <p className="welcome-message">Welcome, {username}! 🎉</p>
             <div className="players-count">
-              <p>Players joined: {Array.isArray(players) ? players.length : players}</p>
+              <p>Players joined: {playerCount ?? players.length}</p>
             </div>
             <button onClick={handleStart} className="start-button">
               Ready to Play!
