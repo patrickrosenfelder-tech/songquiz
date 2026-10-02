@@ -1,15 +1,25 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+:root {
+  /* Vinyl lounge palette */
+  --cream: #FBF1EA;
+  --cream-deep: #F5E1D4;
+  --paper: #FFFDFB;
+  --coral: #D85A30;
+  --coral-dark: #B4461F;
+  --coral-soft: #F5C4B3;
+  --coral-line: #F0997B;
+  --ink: #3B1A0E;
+  --ink-soft: #8A4A2E;
+  --vinyl: #222120;
+  --vinyl-groove: #3A3836;
+  --correct: #3E7A2B;
+  --correct-soft: #E4F0DA;
+  --wrong: #B83A2E;
+  --wrong-soft: #FBE3DF;
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --radius-card: 24px;
+  --shadow-card: 0 1px 2px rgba(59, 26, 14, 0.06), 0 12px 32px rgba(59, 26, 14, 0.08);
 }
 
 * {
@@ -22,7 +32,28 @@ html, body, #root {
   padding: 0;
 }
 
+body {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--cream);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 #root {
   display: flex;
   flex-direction: column;
+}
+
+button, input, select {
+  font-family: inherit;
+}
+
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 3px solid var(--coral-line);
+  outline-offset: 2px;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }

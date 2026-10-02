@@ -4,8 +4,8 @@
   "description": "TuneDuel Backend WebSocket Server",
   "main": "dist/index.js",
   "scripts": {
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
+    "start": "NODE_ENV=production node dist/index.js",
+    "dev": "node --watch-path=src -r ts-node/register src/index.ts",
     "build": "tsc",
     "test": "jest"
   },

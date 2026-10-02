@@ -1,5 +1,8 @@
 import express from 'express';
 import { createServer } from 'http';
+import { existsSync } from 'fs';
+import { networkInterfaces } from 'os';
+import { join } from 'path';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
@@ -110,8 +113,34 @@ function handleWebSocketMessage(clientId: string, message: any, ws: any) {
 }
 
 function handleJoinGame(clientId: string, message: any, ws: any) {
-  const gameId = message.gameId || uuidv4();
-  const userId = message.userId;
+  if (clients.has(clientId)) return;
+
+  const sendError = (text: string) => ws.send(JSON.stringify({ type: 'error', message: text }));
+  const userId = String(message.userId || '').trim().slice(0, 20);
+  if (!userId) {
+    sendError('Please enter a username.');
+    return;
+  }
+
+  let gameId: string;
+  if (message.gameId) {
+    gameId = String(message.gameId).trim().toUpperCase();
+    const existing = gameManager.getGameState(gameId);
+    if (!existing) {
+      sendError(`No game found with code ${gameId}. Check the code and try again.`);
+      return;
+    }
+    if (existing.status !== 'waiting') {
+      sendError('That game has already started.');
+      return;
+    }
+    if (existing.players.some(p => p.userId.toLowerCase() === userId.toLowerCase())) {
+      sendError(`The name "${userId}" is already taken in this game.`);
+      return;
+    }
+  } else {
+    gameId = gameManager.generateGameCode();
+  }
 
   const client: GameClient = {
     id: clientId,
@@ -284,7 +313,33 @@ app.get('/api/stats', async (req, res) => {
   res.json(stats);
 });
 
+// Serve the built frontend so the whole game runs on one port (npm start).
+// In dev the React dev server on :3001 serves it instead.
+const frontendBuild = join(__dirname, '..', '..', 'frontend', 'build');
+const servesFrontend = process.env.NODE_ENV === 'production' && existsSync(join(frontendBuild, 'index.html'));
+if (servesFrontend) {
+  app.use(express.static(frontendBuild));
+  app.get('*', (req, res) => res.sendFile(join(frontendBuild, 'index.html')));
+}
+
+function lanAddresses(): string[] {
+  return Object.values(networkInterfaces())
+    .flat()
+    .filter((net): net is NonNullable<typeof net> => !!net && net.family === 'IPv4' && !net.internal)
+    .map(net => net.address);
+}
+
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`TuneDuel backend server running on port ${PORT}`);
+  if (servesFrontend) {
+    console.log(`\n🎵 Play at http://localhost:${PORT}`);
+    lanAddresses().forEach(ip => {
+      // 100.64.0.0/10 is used by VPNs like Tailscale, not the local Wi-Fi
+      const [a, b] = ip.split('.').map(Number);
+      const label = a === 100 && b >= 64 && b <= 127 ? 'Friends on your VPN (e.g. Tailscale)' : 'Friends on the same Wi-Fi';
+      console.log(`   ${label}: http://${ip}:${PORT}`);
+    });
+    console.log('');
+  }
 });

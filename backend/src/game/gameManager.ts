@@ -47,6 +47,16 @@ export class GameManager {
     this.audioService = new AudioService();
   }
 
+  // Short, easy-to-type code; no 0/O or 1/I to avoid mix-ups
+  generateGameCode(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code: string;
+    do {
+      code = Array.from({ length: 5 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    } while (this.games.has(code));
+    return code;
+  }
+
   joinGame(gameId: string, userId: string, clientId: string): Game {
     let game = this.games.get(gameId);
 

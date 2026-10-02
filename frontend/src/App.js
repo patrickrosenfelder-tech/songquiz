@@ -7,6 +7,7 @@ import GameOver from './components/GameOver';
 function App() {
   const [gameState, setGameState] = useState('lobby');
   const [ws, setWs] = useState(null);
+  const [joinError, setJoinError] = useState(null);
   const [gameData, setGameData] = useState({
     gameId: null,
     clientId: null,
@@ -20,7 +21,11 @@ function App() {
 
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const websocket = new WebSocket(`${protocol}//${window.location.hostname}:8080`);
+    // In dev the React server runs separately; otherwise the backend serves this page
+    const wsHost = process.env.NODE_ENV === 'development'
+      ? `${window.location.hostname}:8080`
+      : window.location.host;
+    const websocket = new WebSocket(`${protocol}//${wsHost}`);
 
     websocket.onopen = () => {
       console.log('Connected to server');
@@ -61,7 +66,12 @@ function App() {
           genres: message.genres,
           currentRound: message.gameState.currentRound
         }));
+        setJoinError(null);
         setGameState('lobby');
+        break;
+
+      case 'error':
+        setJoinError(message.message);
         break;
 
       case 'lobby-updated':
@@ -125,14 +135,18 @@ function App() {
     }
   };
 
-  const joinGame = (userId) => {
+  // Without a game code the server creates a new game with this player as host
+  const joinGame = (userId, gameCode) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
+      setJoinError(null);
       setGameData((prev) => ({ ...prev, userId }));
       ws.send(JSON.stringify({
         type: 'join',
         userId: userId,
-        gameId: gameData.gameId || undefined
+        gameId: gameCode || undefined
       }));
+    } else {
+      setJoinError("Can't reach the game server. Is it running?");
     }
   };
 
@@ -162,7 +176,8 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>🎵 TuneDuel - Music Trivia</h1>
+        <h1>Tune<span className="accent">Duel</span></h1>
+        <p className="App-tagline">Music trivia with friends</p>
       </header>
 
       {gameState === 'lobby' && (
@@ -170,6 +185,8 @@ function App() {
           onJoin={joinGame}
           onStart={startGame}
           onSettingsChange={updateSettings}
+          joinError={joinError}
+          gameId={gameData.gameId}
           players={gameData.players}
           clientId={gameData.clientId}
           hostClientId={gameData.hostClientId}

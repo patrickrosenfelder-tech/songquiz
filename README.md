@@ -6,10 +6,10 @@
 
 - **Real-time Multiplayer**: Play with other users using WebSocket technology
 - **10-Song Sessions**: Each game features 10 different songs
-- **Artist Identification**: Guess the artist behind each song
 - **Points System**: Earn points based on speed and accuracy
 - **Score Tracking**: Database-backed player statistics
-- **Multiple Audio APIs**: Supports Deezer and Apple Music (with fallback)
+- **Genres & Modes**: Pick a Deezer genre and guess the artist, the title, or a mix
+- **Audio Sources**: Deezer previews with an iTunes fallback
 
 ## MVP Components
 
@@ -29,33 +29,34 @@
 
 ## Installation & Setup
 
-### 1. Install Dependencies
-
 ```bash
 npm install
 ```
 
-This will install dependencies for both backend and frontend using npm workspaces.
+This installs dependencies for both backend and frontend using npm workspaces.
 
-### 2. Build the Project
-
-```bash
-npm run build
-```
-
-### 3. Start the Development Servers
+## Hosting a Game
 
 ```bash
 npm start
 ```
 
-This launches both the backend server (port 8080) and frontend app (port 3000) concurrently.
+This builds everything and serves the whole game from one port (8080). The terminal prints the addresses to share:
 
-### Development Mode (with hot reload)
+```
+🎵 Play at http://localhost:8080
+   Friends on the same Wi-Fi: http://10.0.0.241:8080
+```
+
+Create a game, then share the game code or the invite link from the lobby. On macOS, allow incoming connections for Node if the firewall asks.
+
+## Development (hot reload)
 
 ```bash
 npm run dev
 ```
+
+Starts the backend (port 8080, restarts on code changes) and the React dev server (port 3001) in one terminal. Open http://localhost:3001.
 
 ## Architecture
 
@@ -75,29 +76,34 @@ npm run dev
 
 ## How to Play
 
-1. **Join**: Enter your username and click "Join Game"
-2. **Wait**: Other players can join the same game lobby
-3. **Start**: Click "Ready to Play!" to begin
-4. **Listen**: A 30-second audio preview plays each round
-5. **Answer**: Select the correct artist from 4 options
-6. **Score**: Earn points for correct answers (bonus for speed)
-7. **Repeat**: Play through 10 rounds total
-8. **Results**: View final scores and rankings
+1. **Create**: Enter a username and leave the game code empty to create a game. You're the host 👑
+2. **Invite**: Share the game code or invite link shown in the lobby
+3. **Choose**: The host picks a genre and whether to guess the artist, the title, or a mix
+4. **Start**: The game starts when every player clicks "Ready to Play!"
+5. **Listen & answer**: Each round plays a 30-second preview; pick the right answer from 4 options
+6. **Score**: Faster correct answers earn more points (up to 1000)
+7. **Reveal**: The round ends when everyone answered or time runs out; the next song starts 5 seconds later
+8. **Results**: After 10 songs, view the final rankings
+
+Songs come from Deezer's genre charts, with iTunes as a fallback for audio and a built-in song list if Deezer is unreachable.
 
 ## API Endpoints
 
 ### WebSocket Messages
 
 **Client to Server:**
-- `join`: Join a game
+- `join`: Join a game by code (`gameId`), or create one when no code is given
+- `update-settings`: Host changes the genre (`genreId`) or mode (`artist`/`title`/`mix`)
+- `ready`: Player is ready; the game starts when everyone is
 - `answer`: Submit an answer
-- `ready`: Signal player is ready for next round
 
 **Server to Client:**
-- `game-joined`: Confirmation of game join
-- `round-started`: New round with song data
-- `answer-recorded`: Feedback on submitted answer
-- `player-joined`: Notification of new player
+- `game-joined`: Join confirmation with game code, genres and lobby state
+- `lobby-updated`: Players, host and settings changed
+- `error`: Join failed (unknown code, game started, name taken)
+- `round-started`: New round with audio, question type and options
+- `answer-recorded`: Your answer's result (sent only to you)
+- `round-ended`: Correct answer and scores; next round follows after 5s
 - `game-finished`: Final results
 
 ### REST Endpoints

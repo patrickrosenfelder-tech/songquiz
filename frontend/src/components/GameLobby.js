@@ -11,6 +11,8 @@ function GameLobby({
   onJoin,
   onStart,
   onSettingsChange,
+  joinError,
+  gameId,
   players = [],
   clientId,
   hostClientId,
@@ -18,7 +20,13 @@ function GameLobby({
   genres = []
 }) {
   const [username, setUsername] = useState('');
-  const [joined, setJoined] = useState(false);
+  // Invite links look like ?game=K7PXM
+  const [gameCode, setGameCode] = useState(
+    () => new URLSearchParams(window.location.search).get('game') || ''
+  );
+  const [copied, setCopied] = useState(false);
+  const joined = !!gameId;
+  const inviteLink = gameId ? `${window.location.origin}/?game=${gameId}` : '';
 
   const isHost = !!clientId && clientId === hostClientId;
   const me = players.find((p) => p.clientId === clientId);
@@ -29,8 +37,18 @@ function GameLobby({
 
   const handleJoin = () => {
     if (username.trim()) {
-      onJoin(username);
-      setJoined(true);
+      onJoin(username.trim(), gameCode.trim().toUpperCase());
+    }
+  };
+
+  const copyInvite = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      // Clipboard needs https or localhost; the link stays visible to copy by hand
+      setCopied(false);
     }
   };
 
@@ -86,9 +104,9 @@ function GameLobby({
 
   return (
     <div className="lobby-container">
-      <div className="lobby-box">
-        <h2>Welcome to TuneDuel!</h2>
-        <p className="description">Test your music knowledge in this exciting trivia game.</p>
+      <div className="card lobby-box">
+        <h2>{joined ? 'The lounge' : 'Drop the needle'}</h2>
+        <p className="description">{joined ? 'Pick your sound, invite friends, and get ready.' : 'Guess songs from 30-second clips. Fastest right answer wins.'}</p>
 
         {!joined ? (
           <div className="join-section">
@@ -99,14 +117,34 @@ function GameLobby({
               onChange={(e) => setUsername(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleJoin()}
               className="username-input"
+              maxLength={20}
             />
-            <button onClick={handleJoin} className="join-button">
-              Join Game
+            <input
+              type="text"
+              placeholder="Game code (leave empty to create a new game)"
+              value={gameCode}
+              onChange={(e) => setGameCode(e.target.value.toUpperCase())}
+              onKeyPress={(e) => e.key === 'Enter' && handleJoin()}
+              className="username-input game-code-input"
+              maxLength={5}
+            />
+            <button onClick={handleJoin} className="btn-primary join-button" disabled={!username.trim()}>
+              {gameCode.trim() ? 'Join game' : 'Create game'}
             </button>
+            {joinError && <p className="join-error">{joinError}</p>}
           </div>
         ) : (
           <div className="waiting-section">
-            <p className="welcome-message">Welcome, {username}! 🎉</p>
+            <p className="welcome-message">Hi {username}, you're in.</p>
+
+            <div className="invite-section">
+              <p className="invite-code">Game code: <strong>{gameId}</strong></p>
+              <p className="invite-hint">Friends can enter this code, or open the link:</p>
+              <div className="invite-link-row">
+                <input className="invite-link" value={inviteLink} readOnly onFocus={(e) => e.target.select()} />
+                <button className="copy-button" onClick={copyInvite}>{copied ? 'Copied!' : 'Copy'}</button>
+              </div>
+            </div>
 
             {renderSettings()}
 
@@ -122,11 +160,11 @@ function GameLobby({
                 ))}
               </ul>
             </div>
-            <button onClick={handleStart} className="start-button" disabled={isReady}>
-              {!isReady ? 'Ready to Play!' : allReady ? 'Loading songs…' : 'Waiting for other players…'}
+            <button onClick={handleStart} className="btn-primary start-button" disabled={isReady}>
+              {!isReady ? "I'm ready" : allReady ? 'Loading songs…' : 'Waiting for other players…'}
             </button>
             <p className="game-info">
-              10 songs • 30 seconds per song • Earn points for correct answers
+              10 tracks · 30 seconds each · faster answers score more
             </p>
           </div>
         )}

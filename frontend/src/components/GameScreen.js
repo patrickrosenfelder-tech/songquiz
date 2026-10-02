@@ -6,6 +6,9 @@ function GameScreen({ song, round, totalRounds, score, answerResult, roundResult
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [nextIn, setNextIn] = useState(null);
+  // Browsers can block autoplay; then the player gets a one-time "tap to play" button
+  const [audioBlocked, setAudioBlocked] = useState(false);
+  const audioRef = useRef(null);
   // Latest handleSubmit, so the countdown effect doesn't restart on every render
   const handleSubmitRef = useRef();
   const roundOver = !!roundResult;
@@ -27,6 +30,21 @@ function GameScreen({ song, round, totalRounds, score, answerResult, roundResult
     setSubmitted(false);
   }, [song]);
 
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    setAudioBlocked(false);
+    audio.play().catch((err) => {
+      // AbortError just means a newer play/pause interrupted this one
+      if (err.name === 'NotAllowedError') setAudioBlocked(true);
+    });
+    return () => audio.pause();
+  }, [song.audioUrl]);
+
+  const startBlockedAudio = () => {
+    audioRef.current?.play().then(() => setAudioBlocked(false)).catch(() => {});
+  };
+
   // Countdown to the next song once the server reveals the answer
   useEffect(() => {
     setNextIn(roundResult ? roundResult.nextIn : null);
@@ -38,9 +56,11 @@ function GameScreen({ song, round, totalRounds, score, answerResult, roundResult
     return () => clearTimeout(timer);
   }, [nextIn]);
 
-  const handleSubmit = () => {
-    if (!submitted) {
-      onAnswerSubmit(selectedAnswer || 'skipped');
+  // Tapping an option answers immediately; the timeout submits 'skipped'
+  const handleSubmit = (answer) => {
+    if (!submitted && !roundOver) {
+      setSelectedAnswer(answer || null);
+      onAnswerSubmit(answer || 'skipped');
       setSubmitted(true);
     }
   };
@@ -61,66 +81,76 @@ function GameScreen({ song, round, totalRounds, score, answerResult, roundResult
   const renderRoundResult = () => {
     let headline;
     if (answerResult && answerResult.correct) {
-      headline = `✅ Correct! +${answerResult.points} points`;
+      headline = `Correct! +${answerResult.points} pts`;
     } else if (!selectedAnswer) {
-      headline = "⏰ Time's up!";
+      headline = "Time's up";
     } else {
-      headline = '❌ Wrong answer';
+      headline = 'Not this time';
     }
 
     return (
       <div className={`round-result ${answerResult && answerResult.correct ? 'is-correct' : 'is-wrong'}`}>
         <p className="round-result-headline">{headline}</p>
-        <p>It was <strong>{roundResult.artist}</strong> – <strong>{roundResult.title}</strong></p>
+        <p className="round-result-song">
+          <strong>{roundResult.title}</strong> by {roundResult.artist}
+        </p>
         <p className="next-in">
-          {roundResult.isLastRound ? 'Final results' : 'Next song'} in {nextIn ?? 0}s…
+          {roundResult.isLastRound ? 'Final results' : 'Next track'} in {nextIn ?? 0}s
         </p>
       </div>
     );
   };
 
-  const getTimerColor = () => {
-    if (timeLeft > 15) return '#4CAF50';
-    if (timeLeft > 5) return '#FFC107';
-    return '#F44336';
-  };
+  const duration = song.duration || 30;
+  const timeFraction = Math.max(0, Math.min(1, timeLeft / duration));
+  const spinning = !!song.audioUrl && !audioBlocked && !roundOver;
 
   return (
     <div className="game-screen">
-      <div className="game-header">
-        <div className="round-info">
-          <span>Round {round} of {totalRounds}</span>
+      <div className="card game-card">
+        <div className="game-header">
+          <span>Track {round} of {totalRounds}</span>
+          <span className="game-score">{score.toLocaleString()} pts</span>
         </div>
-        <div className="score">
-          <span>Score: {score}</span>
-        </div>
-      </div>
 
-      <div className="game-content">
-        <div className="question-section">
-          <h3>{song.questionType === 'title' ? "What's the title of this song?" : 'Who is the artist of this song?'}</h3>
-
+        <div className="turntable">
           {song.audioUrl && (
-            <div className="audio-player">
-              <audio key={song.audioUrl} src={song.audioUrl} controls autoPlay>
-                Your browser does not support the audio element.
-              </audio>
-            </div>
+            // No controls: players can't pause or skip ahead
+            <audio
+              ref={audioRef}
+              key={song.audioUrl}
+              src={song.audioUrl}
+              preload="auto"
+              onPlaying={() => setAudioBlocked(false)}
+            />
           )}
-
-          <div className="timer" style={{ color: getTimerColor() }}>
-            <div className="timer-circle">
-              {timeLeft}s
+          <div className={`vinyl ${spinning ? 'spinning' : ''}`} aria-hidden="true">
+            <div className="vinyl-label">
+              <span className="vinyl-hole" />
             </div>
           </div>
+          {audioBlocked && (
+            <button className="play-audio-button" onClick={startBlockedAudio}>▶ Start the song</button>
+          )}
         </div>
+
+        <div className={`time-bar ${timeLeft <= 5 && !roundOver ? 'urgent' : ''}`}>
+          <div className="time-bar-track">
+            <div className="time-bar-fill" style={{ width: `${timeFraction * 100}%` }} />
+          </div>
+          <span className="time-left">{timeLeft}s</span>
+        </div>
+
+        <h3 className="question">
+          {song.questionType === 'title' ? "What's the title?" : "Who's the artist?"}
+        </h3>
 
         <div className="options-section">
           {song.options && song.options.map((option, index) => (
             <button
               key={index}
               className={getOptionClass(option)}
-              onClick={() => !submitted && !roundOver && setSelectedAnswer(option)}
+              onClick={() => handleSubmit(option)}
               disabled={submitted || roundOver}
             >
               {option}
@@ -130,18 +160,10 @@ function GameScreen({ song, round, totalRounds, score, answerResult, roundResult
 
         {roundOver ? (
           renderRoundResult()
-        ) : !submitted ? (
-          <button
-            className="submit-button"
-            onClick={handleSubmit}
-            disabled={!selectedAnswer}
-          >
-            Submit Answer
-          </button>
+        ) : submitted ? (
+          <p className="status-message">Locked in. Waiting for the others…</p>
         ) : (
-          <div className="submitted-message">
-            <p>Answer locked in! Waiting for the other players…</p>
-          </div>
+          <p className="status-message hint">Tap an answer to lock it in</p>
         )}
       </div>
     </div>

@@ -6,7 +6,8 @@ export class DatabaseService {
   private dbPath: string;
 
   constructor() {
-    this.dbPath = join(process.cwd(), 'songquiz.db');
+    // src/database or dist/database -> backend/songquiz.db
+    this.dbPath = join(__dirname, '..', '..', 'songquiz.db');
   }
 
   private run(sql: string, params: unknown[] = []): Promise<void> {
