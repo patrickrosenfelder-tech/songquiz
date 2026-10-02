@@ -8,7 +8,6 @@
     "frontend"
   ],
   "scripts": {
-    "install": "npm install",
     "start": "concurrently \"npm:start:backend\" \"npm:start:frontend\"",
     "start:backend": "cd backend && npm start",
     "start:frontend": "cd frontend && npm start",
