@@ -1,150 +1,159 @@
 import axios from 'axios';
 
+export type QuestionType = 'artist' | 'title';
+
+export interface Track {
+  id: string;
+  deezerId?: number;
+  title: string;
+  artist: string;
+}
+
 export interface Song {
   id: string;
   title: string;
   artist: string;
   audioUrl: string;
+  questionType: QuestionType;
   correctAnswer: string;
   options: string[];
 }
 
+export interface Genre {
+  id: number;
+  name: string;
+}
+
+// Deezer genre ids; 0 is the overall chart
+export const GENRES: Genre[] = [
+  { id: 0, name: 'All' },
+  { id: 132, name: 'Pop' },
+  { id: 152, name: 'Rock' },
+  { id: 116, name: 'Rap/Hip Hop' },
+  { id: 113, name: 'Dance' },
+  { id: 165, name: 'R&B' },
+  { id: 85, name: 'Alternative' },
+  { id: 106, name: 'Electro' },
+  { id: 464, name: 'Metal' },
+  { id: 84, name: 'Country' },
+  { id: 169, name: 'Soul & Funk' },
+  { id: 144, name: 'Reggae' },
+  { id: 129, name: 'Jazz' },
+  { id: 197, name: 'Latin Music' }
+];
+
+// Used when Deezer can't be reached
+const FALLBACK_TRACKS: Track[] = [
+  { id: 'local-1', title: 'Bohemian Rhapsody', artist: 'Queen' },
+  { id: 'local-2', title: 'Stairway to Heaven', artist: 'Led Zeppelin' },
+  { id: 'local-3', title: 'Imagine', artist: 'John Lennon' },
+  { id: 'local-4', title: 'Like a Rolling Stone', artist: 'Bob Dylan' },
+  { id: 'local-5', title: 'Hotel California', artist: 'Eagles' },
+  { id: 'local-6', title: 'Sweet Child O\' Mine', artist: 'Guns N\' Roses' },
+  { id: 'local-7', title: 'Smells Like Teen Spirit', artist: 'Nirvana' },
+  { id: 'local-8', title: 'Blinding Lights', artist: 'The Weeknd' },
+  { id: 'local-9', title: 'Levitating', artist: 'Dua Lipa' },
+  { id: 'local-10', title: 'Bad Guy', artist: 'Billie Eilish' },
+  { id: 'local-11', title: 'Shape of You', artist: 'Ed Sheeran' },
+  { id: 'local-12', title: 'One Dance', artist: 'Drake' }
+];
+
+const POOL_CACHE_TTL = 10 * 60 * 1000;
+const REQUEST_TIMEOUT = 5000;
+
 export class AudioService {
   private readonly DEEZER_API_BASE = 'https://api.deezer.com';
-  private readonly APPLE_MUSIC_API_BASE = 'https://api.music.apple.com/v1';
-  private cache: Song[] = [];
+  private readonly ITUNES_API_BASE = 'https://itunes.apple.com';
+  private poolCache: Map<number, { tracks: Track[]; fetchedAt: number }> = new Map();
 
-  constructor() {
-    this.initializeSongs();
-  }
+  // Songs for a game, shuffled. Falls back to the built-in list if Deezer fails.
+  async getSongPool(genreId: number): Promise<Track[]> {
+    const cached = this.poolCache.get(genreId);
+    if (cached && Date.now() - cached.fetchedAt < POOL_CACHE_TTL) {
+      return this.shuffleArray([...cached.tracks]);
+    }
 
-  private initializeSongs(): void {
-    this.cache = [
-      {
-        id: '1',
-        title: 'Bohemian Rhapsody',
-        artist: 'Queen',
-        audioUrl: '',
-        correctAnswer: 'Queen',
-        options: ['The Beatles', 'Queen', 'Led Zeppelin', 'Pink Floyd']
-      },
-      {
-        id: '2',
-        title: 'Stairway to Heaven',
-        artist: 'Led Zeppelin',
-        audioUrl: '',
-        correctAnswer: 'Led Zeppelin',
-        options: ['Queen', 'Led Zeppelin', 'Pink Floyd', 'David Bowie']
-      },
-      {
-        id: '3',
-        title: 'Imagine',
-        artist: 'John Lennon',
-        audioUrl: '',
-        correctAnswer: 'John Lennon',
-        options: ['Paul McCartney', 'John Lennon', 'George Harrison', 'Ringo Starr']
-      },
-      {
-        id: '4',
-        title: 'Like a Rolling Stone',
-        artist: 'Bob Dylan',
-        audioUrl: '',
-        correctAnswer: 'Bob Dylan',
-        options: ['The Doors', 'Bob Dylan', 'Jimi Hendrix', 'Janis Joplin']
-      },
-      {
-        id: '5',
-        title: 'Hotel California',
-        artist: 'Eagles',
-        audioUrl: '',
-        correctAnswer: 'Eagles',
-        options: ['Fleetwood Mac', 'Eagles', 'Lynyrd Skynyrd', 'The Allman Brothers Band']
-      },
-      {
-        id: '6',
-        title: 'Sweet Child O\' Mine',
-        artist: 'Guns N\' Roses',
-        audioUrl: '',
-        correctAnswer: 'Guns N\' Roses',
-        options: ['Metallica', 'Guns N\' Roses', 'AC/DC', 'Aerosmith']
-      },
-      {
-        id: '7',
-        title: 'Smells Like Teen Spirit',
-        artist: 'Nirvana',
-        audioUrl: '',
-        correctAnswer: 'Nirvana',
-        options: ['Pearl Jam', 'Nirvana', 'Soundgarden', 'Alice in Chains']
-      },
-      {
-        id: '8',
-        title: 'Blinding Lights',
-        artist: 'The Weeknd',
-        audioUrl: '',
-        correctAnswer: 'The Weeknd',
-        options: ['Dua Lipa', 'The Weeknd', 'Post Malone', 'Travis Scott']
-      },
-      {
-        id: '9',
-        title: 'Levitating',
-        artist: 'Dua Lipa',
-        audioUrl: '',
-        correctAnswer: 'Dua Lipa',
-        options: ['Billie Eilish', 'Dua Lipa', 'Ariana Grande', 'Olivia Rodrigo']
-      },
-      {
-        id: '10',
-        title: 'Bad Guy',
-        artist: 'Billie Eilish',
-        audioUrl: '',
-        correctAnswer: 'Billie Eilish',
-        options: ['Finneas', 'Billie Eilish', 'Tyler, the Creator', 'Khalid']
-      },
-      {
-        id: '11',
-        title: 'Shape of You',
-        artist: 'Ed Sheeran',
-        audioUrl: '',
-        correctAnswer: 'Ed Sheeran',
-        options: ['Sam Smith', 'Ed Sheeran', 'Bruno Mars', 'Shawn Mendes']
-      },
-      {
-        id: '12',
-        title: 'One Dance',
-        artist: 'Drake',
-        audioUrl: '',
-        correctAnswer: 'Drake',
-        options: ['Kendrick Lamar', 'Drake', 'J. Cole', 'Nas']
+    try {
+      const response = await axios.get(`${this.DEEZER_API_BASE}/chart/${genreId}/tracks`, {
+        params: { limit: 100 },
+        timeout: REQUEST_TIMEOUT
+      });
+      const seen = new Set<string>();
+      const tracks: Track[] = [];
+      for (const t of response.data.data || []) {
+        if (!t.preview || !t.artist?.name) continue;
+        const title = this.cleanTitle(t.title_short || t.title);
+        const key = `${t.artist.name}|${title}`.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        tracks.push({ id: String(t.id), deezerId: t.id, title, artist: t.artist.name });
       }
-    ];
+
+      if (tracks.length >= 10) {
+        this.poolCache.set(genreId, { tracks, fetchedAt: Date.now() });
+        return this.shuffleArray([...tracks]);
+      }
+      console.warn(`Deezer chart for genre ${genreId} only had ${tracks.length} tracks, using fallback list`);
+    } catch (err) {
+      console.error('Deezer chart fetch failed, using fallback list:', err instanceof Error ? err.message : err);
+    }
+
+    return this.shuffleArray([...FALLBACK_TRACKS]);
   }
 
-  getRandomSongSync(excludeIds: string[] = []): Song {
-    const available = this.cache.filter(s => !excludeIds.includes(s.id));
-    const pool = available.length > 0 ? available : this.cache;
-    const song = pool[Math.floor(Math.random() * pool.length)];
+  // Deezer first, then iTunes. Looked up per round because Deezer preview URLs expire.
+  async getPreviewUrl(track: Track): Promise<string | null> {
+    return (await this.fetchDeezerPreview(track)) || (await this.fetchItunesPreview(track));
+  }
+
+  buildSong(track: Track, pool: Track[], questionType: QuestionType, audioUrl: string): Song {
+    const correctAnswer = questionType === 'artist' ? track.artist : track.title;
+    const distractors = this.pickDistractors(correctAnswer, pool, questionType);
+
     return {
-      ...song,
-      options: this.shuffleArray([...song.options])
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      audioUrl,
+      questionType,
+      correctAnswer,
+      options: this.shuffleArray([correctAnswer, ...distractors])
     };
   }
 
-  // Deezer preview URLs expire, so look one up fresh for each round
-  async getRandomSong(excludeIds: string[] = []): Promise<Song> {
-    const song = this.getRandomSongSync(excludeIds);
-    const audioUrl = await this.fetchPreviewUrl(song.artist, song.title);
-    return { ...song, audioUrl: audioUrl || song.audioUrl };
+  private pickDistractors(correctAnswer: string, pool: Track[], questionType: QuestionType): string[] {
+    const field = (t: Track) => (questionType === 'artist' ? t.artist : t.title);
+    const used = new Set([correctAnswer.toLowerCase()]);
+    const distractors: string[] = [];
+
+    // Pad with the fallback list in case the pool has too few distinct values
+    const candidates = [...this.shuffleArray([...pool]), ...this.shuffleArray([...FALLBACK_TRACKS])];
+    for (const t of candidates) {
+      const value = field(t);
+      if (used.has(value.toLowerCase())) continue;
+      used.add(value.toLowerCase());
+      distractors.push(value);
+      if (distractors.length === 3) break;
+    }
+    return distractors;
   }
 
-  private async fetchPreviewUrl(artist: string, title: string): Promise<string | null> {
+  private async fetchDeezerPreview(track: Track): Promise<string | null> {
     try {
+      if (track.deezerId) {
+        const response = await axios.get(`${this.DEEZER_API_BASE}/track/${track.deezerId}`, {
+          timeout: REQUEST_TIMEOUT
+        });
+        return response.data.preview || null;
+      }
+
       const response = await axios.get(`${this.DEEZER_API_BASE}/search`, {
-        params: { q: `${artist} ${title}`, limit: 10 },
-        timeout: 5000
+        params: { q: `${track.artist} ${track.title}`, limit: 10 },
+        timeout: REQUEST_TIMEOUT
       });
-      const tracks: any[] = response.data.data || [];
-      const match = tracks.find(t => t.preview && t.artist?.name?.toLowerCase() === artist.toLowerCase())
-        || tracks.find(t => t.preview);
+      const results: any[] = response.data.data || [];
+      const match = results.find(t => t.preview && this.sameArtist(t.artist?.name, track.artist))
+        || results.find(t => t.preview);
       return match ? match.preview : null;
     } catch (err) {
       console.error('Deezer preview lookup failed:', err instanceof Error ? err.message : err);
@@ -152,51 +161,36 @@ export class AudioService {
     }
   }
 
-  async fetchFromDeezer(query: string): Promise<Song | null> {
+  private async fetchItunesPreview(track: Track): Promise<string | null> {
     try {
-      const response = await axios.get(`${this.DEEZER_API_BASE}/search/track`, {
-        params: { q: query }
+      const response = await axios.get(`${this.ITUNES_API_BASE}/search`, {
+        params: { term: `${track.artist} ${track.title}`, entity: 'song', limit: 10 },
+        timeout: REQUEST_TIMEOUT
       });
-
-      if (response.data.data && response.data.data.length > 0) {
-        const track = response.data.data[0];
-        return {
-          id: track.id,
-          title: track.title,
-          artist: track.artist.name,
-          audioUrl: track.preview,
-          correctAnswer: track.artist.name,
-          options: [track.artist.name, 'Unknown', 'Various', 'Compilation']
-        };
-      }
+      const results: any[] = response.data.results || [];
+      const match = results.find(r => r.previewUrl && this.sameArtist(r.artistName, track.artist));
+      return match ? match.previewUrl : null;
     } catch (err) {
-      console.error('Deezer API error:', err);
+      console.error('iTunes preview lookup failed:', err instanceof Error ? err.message : err);
+      return null;
     }
-    return null;
   }
 
-  async fetchFromAppleMusic(query: string, token: string): Promise<Song | null> {
-    try {
-      const response = await axios.get(`${this.APPLE_MUSIC_API_BASE}/catalog/us/search`, {
-        params: { term: query, types: 'songs', limit: 1 },
-        headers: { Authorization: `Bearer ${token}` }
-      });
+  private sameArtist(a: string | undefined, b: string): boolean {
+    if (!a) return false;
+    const x = a.toLowerCase();
+    const y = b.toLowerCase();
+    return x === y || x.includes(y) || y.includes(x);
+  }
 
-      if (response.data.results.songs?.data && response.data.results.songs.data.length > 0) {
-        const track = response.data.results.songs.data[0];
-        return {
-          id: track.id,
-          title: track.attributes.name,
-          artist: track.attributes.artistName,
-          audioUrl: track.attributes.previews?.[0]?.url || '',
-          correctAnswer: track.attributes.artistName,
-          options: [track.attributes.artistName, 'Unknown', 'Various', 'Compilation']
-        };
-      }
-    } catch (err) {
-      console.error('Apple Music API error:', err);
-    }
-    return null;
+  // "Everywhere (2017 Remaster)" -> "Everywhere", "Song (feat. X)" -> "Song"
+  private cleanTitle(title: string): string {
+    const cleaned = title
+      .replace(/\s*[([](feat\.?|ft\.?|with)\s[^)\]]*[)\]]/gi, '')
+      .replace(/\s*[([][^)\]]*(remaster|version|edit|mix|live|mono|stereo)[^)\]]*[)\]]/gi, '')
+      .replace(/\s+-\s+.*(remaster|version|edit|mix|live).*$/i, '')
+      .trim();
+    return cleaned || title;
   }
 
   private shuffleArray<T>(array: T[]): T[] {

@@ -56,9 +56,21 @@ function App() {
           gameId: message.gameId,
           clientId: message.clientId,
           players: message.gameState.players,
+          hostClientId: message.gameState.hostClientId,
+          settings: message.gameState.settings,
+          genres: message.genres,
           currentRound: message.gameState.currentRound
         }));
         setGameState('lobby');
+        break;
+
+      case 'lobby-updated':
+        setGameData((prev) => ({
+          ...prev,
+          players: message.players,
+          hostClientId: message.hostClientId,
+          settings: message.settings
+        }));
         break;
 
       case 'round-started':
@@ -91,6 +103,7 @@ function App() {
             players: message.scores,
             roundResult: {
               correctAnswer: message.correctAnswer,
+              artist: message.artist,
               title: message.title,
               isLastRound: message.isLastRound,
               nextIn: message.nextIn
@@ -105,15 +118,6 @@ function App() {
           ...prev,
           finalResults: message.results
         }));
-        break;
-
-      case 'player-joined':
-        // Server only sends the new player's userId; keep players an array of objects
-        setGameData((prev) => (
-          prev.players.some((p) => p.userId === message.userId)
-            ? prev
-            : { ...prev, players: [...prev.players, { userId: message.userId, clientId: message.userId, score: 0, ready: false }] }
-        ));
         break;
 
       default:
@@ -141,6 +145,12 @@ function App() {
     }
   };
 
+  const updateSettings = (settings) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'update-settings', ...settings }));
+    }
+  };
+
   const startGame = () => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
@@ -159,7 +169,12 @@ function App() {
         <GameLobby
           onJoin={joinGame}
           onStart={startGame}
+          onSettingsChange={updateSettings}
           players={gameData.players}
+          clientId={gameData.clientId}
+          hostClientId={gameData.hostClientId}
+          settings={gameData.settings}
+          genres={gameData.genres}
         />
       )}
 

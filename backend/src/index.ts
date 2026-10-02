@@ -5,6 +5,7 @@ import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
 import { GameManager } from './game/gameManager';
 import { DatabaseService } from './database/database';
+import { GENRES } from './services/audioService';
 
 const app = express();
 const server = createServer(app);
@@ -35,6 +36,8 @@ const NEXT_ROUND_DELAY = 5000;
 // Extra time so a client's own timeout answer arrives before the server closes the round
 const ROUND_GRACE_PERIOD = 1500;
 const roundTimers: Map<string, NodeJS.Timeout> = new Map();
+// Games loading their song pool, so a second ready message can't start them twice
+const startingGames: Set<string> = new Set();
 
 function setRoundTimer(gameId: string, fn: () => void, delay: number) {
   clearRoundTimer(gameId);
@@ -73,6 +76,8 @@ wss.on('connection', (ws) => {
       const game = gameManager.getGameState(client.gameId);
       if (!game) {
         clearRoundTimer(client.gameId);
+      } else if (game.status === 'waiting') {
+        broadcastLobby(client.gameId);
       } else if (game.status === 'playing' && gameManager.allPlayersAnswered(client.gameId)) {
         // The player who left may have been the last one we were waiting for
         endRound(client.gameId);
@@ -92,6 +97,9 @@ function handleWebSocketMessage(clientId: string, message: any, ws: any) {
       break;
     case 'answer':
       handleAnswer(clientId, message);
+      break;
+    case 'update-settings':
+      handleUpdateSettings(clientId, message);
       break;
     case 'ready':
       handlePlayerReady(clientId, message).catch(err => console.error('Failed to start round:', err));
@@ -120,17 +128,40 @@ function handleJoinGame(clientId: string, message: any, ws: any) {
     type: 'game-joined',
     gameId,
     clientId,
+    genres: GENRES,
     gameState: {
       players: game.players,
+      hostClientId: game.hostClientId,
+      settings: game.settings,
       currentRound: game.currentRound,
       totalRounds: game.totalRounds
     }
   }));
 
+  broadcastLobby(gameId);
+}
+
+function handleUpdateSettings(clientId: string, message: any) {
+  const client = clients.get(clientId);
+  if (!client) return;
+
+  const settings: { genreId?: number; mode?: any } = {};
+  if (message.genreId !== undefined) settings.genreId = Number(message.genreId);
+  if (message.mode !== undefined) settings.mode = message.mode;
+
+  if (gameManager.updateSettings(client.gameId, clientId, settings)) {
+    broadcastLobby(client.gameId);
+  }
+}
+
+function broadcastLobby(gameId: string) {
+  const game = gameManager.getGameState(gameId);
+  if (!game) return;
   broadcastToGame(gameId, {
-    type: 'player-joined',
-    userId,
-    totalPlayers: game.players.length
+    type: 'lobby-updated',
+    players: game.players,
+    hostClientId: game.hostClientId,
+    settings: game.settings
   });
 }
 
@@ -158,17 +189,28 @@ async function handlePlayerReady(clientId: string, message: any) {
   if (!client) return;
 
   const game = gameManager.getGameState(client.gameId);
-  if (!game || game.status !== 'waiting') return;
+  if (!game || game.status !== 'waiting' || startingGames.has(client.gameId)) return;
 
   const allReady = gameManager.setPlayerReady(client.gameId, clientId);
+  broadcastLobby(client.gameId);
 
   if (allReady) {
-    await startRound(client.gameId);
+    startingGames.add(client.gameId);
+    try {
+      await gameManager.prepareGame(client.gameId);
+      await startRound(client.gameId);
+    } finally {
+      startingGames.delete(client.gameId);
+    }
   }
 }
 
 async function startRound(gameId: string) {
   const game = await gameManager.startNextRound(gameId);
+  if (game.status === 'finished') {
+    finishGame(gameId);
+    return;
+  }
 
   broadcastToGame(gameId, {
     type: 'round-started',
@@ -176,6 +218,7 @@ async function startRound(gameId: string) {
     totalRounds: game.totalRounds,
     song: {
       audioUrl: game.currentSong?.audioUrl,
+      questionType: game.currentSong?.questionType,
       options: game.currentSong?.options,
       duration: gameManager.ANSWER_TIMEOUT / 1000
     }
@@ -195,6 +238,7 @@ function endRound(gameId: string) {
     type: 'round-ended',
     round: round.roundNumber,
     correctAnswer: round.song.correctAnswer,
+    artist: round.song.artist,
     title: round.song.title,
     scores: game.players.map(p => ({ userId: p.userId, clientId: p.clientId, score: p.score })),
     isLastRound,

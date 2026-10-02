@@ -71,7 +71,7 @@ function GameScreen({ song, round, totalRounds, score, answerResult, roundResult
     return (
       <div className={`round-result ${answerResult && answerResult.correct ? 'is-correct' : 'is-wrong'}`}>
         <p className="round-result-headline">{headline}</p>
-        <p>It was <strong>{roundResult.correctAnswer}</strong> – {roundResult.title}</p>
+        <p>It was <strong>{roundResult.artist}</strong> – <strong>{roundResult.title}</strong></p>
         <p className="next-in">
           {roundResult.isLastRound ? 'Final results' : 'Next song'} in {nextIn ?? 0}s…
         </p>
@@ -98,7 +98,7 @@ function GameScreen({ song, round, totalRounds, score, answerResult, roundResult
 
       <div className="game-content">
         <div className="question-section">
-          <h3>Who is the artist of this song?</h3>
+          <h3>{song.questionType === 'title' ? "What's the title of this song?" : 'Who is the artist of this song?'}</h3>
 
           {song.audioUrl && (
             <div className="audio-player">

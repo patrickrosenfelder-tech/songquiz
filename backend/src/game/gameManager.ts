@@ -1,14 +1,5 @@
-import { AudioService } from '../services/audioService';
+import { AudioService, GENRES, QuestionType, Song, Track } from '../services/audioService';
 import { v4 as uuidv4 } from 'uuid';
-
-export interface Song {
-  id: string;
-  title: string;
-  artist: string;
-  audioUrl: string;
-  correctAnswer: string;
-  options: string[];
-}
 
 export interface GameRound {
   roundNumber: number;
@@ -25,14 +16,25 @@ export interface Player {
   ready: boolean;
 }
 
+export type GameMode = 'artist' | 'title' | 'mix';
+
+export interface GameSettings {
+  genreId: number;
+  mode: GameMode;
+}
+
 export interface Game {
   id: string;
+  hostClientId: string;
+  settings: GameSettings;
   players: Player[];
   rounds: GameRound[];
   currentRound: number;
   totalRounds: number;
   status: 'waiting' | 'playing' | 'finished';
   currentSong?: Song;
+  songPool: Track[];
+  nextTrackIndex: number;
 }
 
 export class GameManager {
@@ -51,11 +53,15 @@ export class GameManager {
     if (!game) {
       game = {
         id: gameId,
+        hostClientId: clientId,
+        settings: { genreId: 0, mode: 'artist' },
         players: [],
         rounds: [],
         currentRound: 0,
         totalRounds: this.TOTAL_ROUNDS,
-        status: 'waiting'
+        status: 'waiting',
+        songPool: [],
+        nextTrackIndex: 0
       };
       this.games.set(gameId, game);
     }
@@ -78,8 +84,32 @@ export class GameManager {
       game.players = game.players.filter(p => p.clientId !== clientId);
       if (game.players.length === 0) {
         this.games.delete(gameId);
+      } else if (game.hostClientId === clientId) {
+        game.hostClientId = game.players[0].clientId;
       }
     }
+  }
+
+  // Only the host can change settings, and only before the game starts
+  updateSettings(gameId: string, clientId: string, settings: Partial<GameSettings>): boolean {
+    const game = this.games.get(gameId);
+    if (!game || game.status !== 'waiting' || game.hostClientId !== clientId) return false;
+
+    if (settings.genreId !== undefined && GENRES.some(g => g.id === settings.genreId)) {
+      game.settings.genreId = settings.genreId;
+    }
+    if (settings.mode && ['artist', 'title', 'mix'].includes(settings.mode)) {
+      game.settings.mode = settings.mode;
+    }
+    return true;
+  }
+
+  async prepareGame(gameId: string): Promise<void> {
+    const game = this.games.get(gameId);
+    if (!game) throw new Error('Game not found');
+    game.songPool = await this.audioService.getSongPool(game.settings.genreId);
+    game.nextTrackIndex = 0;
+    game.totalRounds = Math.min(this.TOTAL_ROUNDS, game.songPool.length);
   }
 
   setPlayerReady(gameId: string, clientId: string): boolean {
@@ -110,8 +140,14 @@ export class GameManager {
       p.ready = false;
     });
 
-    const playedIds = game.rounds.map(r => r.song.id);
-    const song = await this.audioService.getRandomSong(playedIds);
+    const song = await this.nextPlayableSong(game);
+    if (!song) {
+      // Ran out of songs with audio; end the game after the rounds played so far
+      game.currentRound--;
+      game.totalRounds = game.currentRound;
+      game.status = 'finished';
+      return game;
+    }
     game.currentSong = song;
 
     const round: GameRound = {
@@ -124,6 +160,23 @@ export class GameManager {
     game.rounds.push(round);
 
     return game;
+  }
+
+  // The pool is already shuffled; skip tracks that have no preview on Deezer or iTunes
+  private async nextPlayableSong(game: Game): Promise<Song | null> {
+    while (game.nextTrackIndex < game.songPool.length) {
+      const track = game.songPool[game.nextTrackIndex++];
+      const audioUrl = await this.audioService.getPreviewUrl(track);
+      if (!audioUrl) {
+        console.warn(`No preview for "${track.artist} - ${track.title}", skipping`);
+        continue;
+      }
+      const questionType: QuestionType = game.settings.mode === 'mix'
+        ? (Math.random() < 0.5 ? 'artist' : 'title')
+        : game.settings.mode;
+      return this.audioService.buildSong(track, game.songPool, questionType, audioUrl);
+    }
+    return null;
   }
 
   // Returns null if there is no open round or the player already answered

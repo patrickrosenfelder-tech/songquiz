@@ -114,3 +114,67 @@
   color: #999;
   margin: 0;
 }
+
+.start-button:disabled {
+  background-color: #a5d6a7;
+  cursor: default;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.settings-label {
+  font-weight: 600;
+  color: #444;
+}
+
+.genre-select {
+  padding: 10px 12px;
+  font-size: 1em;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  background: white;
+}
+
+.mode-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.mode-button {
+  padding: 10px;
+  font-size: 1em;
+  background-color: #f5f5f5;
+  color: #333;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.mode-button.active {
+  background-color: #667eea;
+  color: white;
+  border-color: #667eea;
+}
+
+.mode-button:disabled,
+.genre-select:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.settings-summary {
+  margin: 0;
+  font-size: 1.05em;
+}
+
+.settings-hint {
+  margin: 0;
+  font-size: 0.9em;
+  color: #888;
+}
