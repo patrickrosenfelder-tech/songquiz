@@ -39,7 +39,7 @@ export class GameManager {
   private games: Map<string, Game> = new Map();
   private audioService: AudioService;
   private readonly TOTAL_ROUNDS = 10;
-  private readonly ANSWER_TIMEOUT = 30000; // 30 seconds
+  readonly ANSWER_TIMEOUT = 30000; // 30 seconds
 
   constructor() {
     this.audioService = new AudioService();
@@ -94,7 +94,7 @@ export class GameManager {
     return game.players.every(p => p.ready);
   }
 
-  startNextRound(gameId: string): Game {
+  async startNextRound(gameId: string): Promise<Game> {
     const game = this.games.get(gameId);
     if (!game) throw new Error('Game not found');
 
@@ -110,7 +110,8 @@ export class GameManager {
       p.ready = false;
     });
 
-    const song = this.audioService.getRandomSongSync();
+    const playedIds = game.rounds.map(r => r.song.id);
+    const song = await this.audioService.getRandomSong(playedIds);
     game.currentSong = song;
 
     const round: GameRound = {
@@ -125,15 +126,18 @@ export class GameManager {
     return game;
   }
 
-  recordAnswer(gameId: string, clientId: string, answer: string, timeSpent: number): { correct: boolean; points: number } {
-    const game = this.games.get(gameId);
-    if (!game || game.rounds.length === 0) {
-      return { correct: false, points: 0 };
+  // Returns null if there is no open round or the player already answered
+  recordAnswer(gameId: string, clientId: string, answer: string): { correct: boolean; points: number } | null {
+    const round = this.getCurrentRound(gameId);
+    if (!round || round.endTime !== undefined || round.answers.has(clientId)) {
+      return null;
     }
 
-    const currentRound = game.rounds[game.rounds.length - 1];
-    const isCorrect = answer.toLowerCase() === currentRound.song.correctAnswer.toLowerCase();
+    const game = this.games.get(gameId)!;
+    const timeSpent = Date.now() - round.startTime;
+    const isCorrect = answer.toLowerCase() === round.song.correctAnswer.toLowerCase();
 
+    // 1000 points for an instant answer, dropping to 0 at the 30s limit
     const points = isCorrect ? Math.max(0, 1000 - Math.floor(timeSpent / 30)) : 0;
 
     const player = game.players.find(p => p.clientId === clientId);
@@ -141,7 +145,7 @@ export class GameManager {
       player.score += points;
     }
 
-    currentRound.answers.set(clientId, {
+    round.answers.set(clientId, {
       answer,
       timeSpent,
       correct: isCorrect,
@@ -149,6 +153,40 @@ export class GameManager {
     });
 
     return { correct: isCorrect, points };
+  }
+
+  getCurrentRound(gameId: string): GameRound | undefined {
+    const game = this.games.get(gameId);
+    return game?.rounds[game.rounds.length - 1];
+  }
+
+  allPlayersAnswered(gameId: string): boolean {
+    const game = this.games.get(gameId);
+    const round = this.getCurrentRound(gameId);
+    if (!game || !round) return false;
+    return game.players.every(p => round.answers.has(p.clientId));
+  }
+
+  // Closes the current round; returns null if it was already closed
+  endCurrentRound(gameId: string): GameRound | null {
+    const round = this.getCurrentRound(gameId);
+    if (!round || round.endTime !== undefined) return null;
+    round.endTime = Date.now();
+    return round;
+  }
+
+  isLastRound(gameId: string): boolean {
+    const game = this.games.get(gameId);
+    return !!game && game.currentRound >= game.totalRounds;
+  }
+
+  finishGame(gameId: string): Array<{ player: string; score: number }> {
+    const game = this.games.get(gameId);
+    if (!game) return [];
+    game.status = 'finished';
+    return [...game.players]
+      .sort((a, b) => b.score - a.score)
+      .map(p => ({ player: p.userId, score: p.score }));
   }
 
   getGameState(gameId: string): Game | undefined {

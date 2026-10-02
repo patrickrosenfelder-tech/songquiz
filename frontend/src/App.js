@@ -65,18 +65,38 @@ function App() {
         setGameData((prev) => ({
           ...prev,
           currentRound: message.round,
-          currentSong: message.song
+          totalRounds: message.totalRounds || prev.totalRounds,
+          currentSong: message.song,
+          answerResult: null,
+          roundResult: null
         }));
         setGameState('playing');
         break;
 
       case 'answer-recorded':
-        if (message.correct) {
-          setGameData((prev) => ({
+        // Sent only to the player who answered
+        setGameData((prev) => ({
+          ...prev,
+          answerResult: { correct: message.correct, points: message.points },
+          score: prev.score + message.points
+        }));
+        break;
+
+      case 'round-ended':
+        setGameData((prev) => {
+          const me = message.scores.find((p) => p.clientId === prev.clientId);
+          return {
             ...prev,
-            score: prev.score + message.points
-          }));
-        }
+            score: me ? me.score : prev.score,
+            players: message.scores,
+            roundResult: {
+              correctAnswer: message.correctAnswer,
+              title: message.title,
+              isLastRound: message.isLastRound,
+              nextIn: message.nextIn
+            }
+          };
+        });
         break;
 
       case 'game-finished':
@@ -116,8 +136,7 @@ function App() {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'answer',
-        answer: answer,
-        timeSpent: 0
+        answer: answer
       }));
     }
   };
@@ -150,6 +169,8 @@ function App() {
           round={gameData.currentRound}
           totalRounds={gameData.totalRounds}
           score={gameData.score}
+          answerResult={gameData.answerResult}
+          roundResult={gameData.roundResult}
           onAnswerSubmit={submitAnswer}
         />
       )}

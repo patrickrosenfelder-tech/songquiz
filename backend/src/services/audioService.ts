@@ -24,7 +24,7 @@ export class AudioService {
         id: '1',
         title: 'Bohemian Rhapsody',
         artist: 'Queen',
-        audioUrl: 'https://example.com/bohemian-rhapsody.mp3',
+        audioUrl: '',
         correctAnswer: 'Queen',
         options: ['The Beatles', 'Queen', 'Led Zeppelin', 'Pink Floyd']
       },
@@ -32,7 +32,7 @@ export class AudioService {
         id: '2',
         title: 'Stairway to Heaven',
         artist: 'Led Zeppelin',
-        audioUrl: 'https://example.com/stairway.mp3',
+        audioUrl: '',
         correctAnswer: 'Led Zeppelin',
         options: ['Queen', 'Led Zeppelin', 'Pink Floyd', 'David Bowie']
       },
@@ -40,7 +40,7 @@ export class AudioService {
         id: '3',
         title: 'Imagine',
         artist: 'John Lennon',
-        audioUrl: 'https://example.com/imagine.mp3',
+        audioUrl: '',
         correctAnswer: 'John Lennon',
         options: ['Paul McCartney', 'John Lennon', 'George Harrison', 'Ringo Starr']
       },
@@ -48,7 +48,7 @@ export class AudioService {
         id: '4',
         title: 'Like a Rolling Stone',
         artist: 'Bob Dylan',
-        audioUrl: 'https://example.com/rolling-stone.mp3',
+        audioUrl: '',
         correctAnswer: 'Bob Dylan',
         options: ['The Doors', 'Bob Dylan', 'Jimi Hendrix', 'Janis Joplin']
       },
@@ -56,7 +56,7 @@ export class AudioService {
         id: '5',
         title: 'Hotel California',
         artist: 'Eagles',
-        audioUrl: 'https://example.com/hotel-california.mp3',
+        audioUrl: '',
         correctAnswer: 'Eagles',
         options: ['Fleetwood Mac', 'Eagles', 'Lynyrd Skynyrd', 'The Allman Brothers Band']
       },
@@ -64,7 +64,7 @@ export class AudioService {
         id: '6',
         title: 'Sweet Child O\' Mine',
         artist: 'Guns N\' Roses',
-        audioUrl: 'https://example.com/sweet-child.mp3',
+        audioUrl: '',
         correctAnswer: 'Guns N\' Roses',
         options: ['Metallica', 'Guns N\' Roses', 'AC/DC', 'Aerosmith']
       },
@@ -72,7 +72,7 @@ export class AudioService {
         id: '7',
         title: 'Smells Like Teen Spirit',
         artist: 'Nirvana',
-        audioUrl: 'https://example.com/smells-like-teen-spirit.mp3',
+        audioUrl: '',
         correctAnswer: 'Nirvana',
         options: ['Pearl Jam', 'Nirvana', 'Soundgarden', 'Alice in Chains']
       },
@@ -80,7 +80,7 @@ export class AudioService {
         id: '8',
         title: 'Blinding Lights',
         artist: 'The Weeknd',
-        audioUrl: 'https://example.com/blinding-lights.mp3',
+        audioUrl: '',
         correctAnswer: 'The Weeknd',
         options: ['Dua Lipa', 'The Weeknd', 'Post Malone', 'Travis Scott']
       },
@@ -88,7 +88,7 @@ export class AudioService {
         id: '9',
         title: 'Levitating',
         artist: 'Dua Lipa',
-        audioUrl: 'https://example.com/levitating.mp3',
+        audioUrl: '',
         correctAnswer: 'Dua Lipa',
         options: ['Billie Eilish', 'Dua Lipa', 'Ariana Grande', 'Olivia Rodrigo']
       },
@@ -96,7 +96,7 @@ export class AudioService {
         id: '10',
         title: 'Bad Guy',
         artist: 'Billie Eilish',
-        audioUrl: 'https://example.com/bad-guy.mp3',
+        audioUrl: '',
         correctAnswer: 'Billie Eilish',
         options: ['Finneas', 'Billie Eilish', 'Tyler, the Creator', 'Khalid']
       },
@@ -104,7 +104,7 @@ export class AudioService {
         id: '11',
         title: 'Shape of You',
         artist: 'Ed Sheeran',
-        audioUrl: 'https://example.com/shape-of-you.mp3',
+        audioUrl: '',
         correctAnswer: 'Ed Sheeran',
         options: ['Sam Smith', 'Ed Sheeran', 'Bruno Mars', 'Shawn Mendes']
       },
@@ -112,20 +112,44 @@ export class AudioService {
         id: '12',
         title: 'One Dance',
         artist: 'Drake',
-        audioUrl: 'https://example.com/one-dance.mp3',
+        audioUrl: '',
         correctAnswer: 'Drake',
         options: ['Kendrick Lamar', 'Drake', 'J. Cole', 'Nas']
       }
     ];
   }
 
-  getRandomSongSync(): Song {
-    const randomIndex = Math.floor(Math.random() * this.cache.length);
-    const song = this.cache[randomIndex];
+  getRandomSongSync(excludeIds: string[] = []): Song {
+    const available = this.cache.filter(s => !excludeIds.includes(s.id));
+    const pool = available.length > 0 ? available : this.cache;
+    const song = pool[Math.floor(Math.random() * pool.length)];
     return {
       ...song,
       options: this.shuffleArray([...song.options])
     };
+  }
+
+  // Deezer preview URLs expire, so look one up fresh for each round
+  async getRandomSong(excludeIds: string[] = []): Promise<Song> {
+    const song = this.getRandomSongSync(excludeIds);
+    const audioUrl = await this.fetchPreviewUrl(song.artist, song.title);
+    return { ...song, audioUrl: audioUrl || song.audioUrl };
+  }
+
+  private async fetchPreviewUrl(artist: string, title: string): Promise<string | null> {
+    try {
+      const response = await axios.get(`${this.DEEZER_API_BASE}/search`, {
+        params: { q: `${artist} ${title}`, limit: 10 },
+        timeout: 5000
+      });
+      const tracks: any[] = response.data.data || [];
+      const match = tracks.find(t => t.preview && t.artist?.name?.toLowerCase() === artist.toLowerCase())
+        || tracks.find(t => t.preview);
+      return match ? match.preview : null;
+    } catch (err) {
+      console.error('Deezer preview lookup failed:', err instanceof Error ? err.message : err);
+      return null;
+    }
   }
 
   async fetchFromDeezer(query: string): Promise<Song | null> {
