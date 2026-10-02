@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './GameScreen.css';
 
 function GameScreen({ song, round, totalRounds, score, onAnswerSubmit }) {
   const [timeLeft, setTimeLeft] = useState(30);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [submitted, setSubmitted] = useState(false);
+  // Latest handleSubmit, so the countdown effect doesn't restart on every render
+  const handleSubmitRef = useRef();
 
   useEffect(() => {
     if (timeLeft <= 0) {
-      handleSubmit();
+      handleSubmitRef.current();
       return;
     }
 
@@ -28,6 +30,7 @@ function GameScreen({ song, round, totalRounds, score, onAnswerSubmit }) {
       setSubmitted(true);
     }
   };
+  handleSubmitRef.current = handleSubmit;
 
   const getTimerColor = () => {
     if (timeLeft > 15) return '#4CAF50';

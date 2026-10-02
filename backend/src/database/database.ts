@@ -1,5 +1,4 @@
 import sqlite3 from 'sqlite3';
-import { promisify } from 'util';
 import { join } from 'path';
 
 export class DatabaseService {
@@ -8,6 +7,22 @@ export class DatabaseService {
 
   constructor() {
     this.dbPath = join(process.cwd(), 'songquiz.db');
+  }
+
+  private run(sql: string, params: unknown[] = []): Promise<void> {
+    const db = this.db;
+    if (!db) throw new Error('Database not initialized');
+    return new Promise((resolve, reject) => {
+      db.run(sql, params, (err) => (err ? reject(err) : resolve()));
+    });
+  }
+
+  private all<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
+    const db = this.db;
+    if (!db) throw new Error('Database not initialized');
+    return new Promise((resolve, reject) => {
+      db.all(sql, params, (err, rows) => (err ? reject(err) : resolve(rows as T[])));
+    });
   }
 
   async initialize(): Promise<void> {
@@ -27,9 +42,7 @@ export class DatabaseService {
   private async createTables(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const run = promisify(this.db.run.bind(this.db));
-
-    await run(`
+    await this.run(`
       CREATE TABLE IF NOT EXISTS games (
         id TEXT PRIMARY KEY,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -38,7 +51,7 @@ export class DatabaseService {
       )
     `);
 
-    await run(`
+    await this.run(`
       CREATE TABLE IF NOT EXISTS players (
         id TEXT PRIMARY KEY,
         game_id TEXT NOT NULL,
@@ -49,7 +62,7 @@ export class DatabaseService {
       )
     `);
 
-    await run(`
+    await this.run(`
       CREATE TABLE IF NOT EXISTS rounds (
         id TEXT PRIMARY KEY,
         game_id TEXT NOT NULL,
@@ -61,7 +74,7 @@ export class DatabaseService {
       )
     `);
 
-    await run(`
+    await this.run(`
       CREATE TABLE IF NOT EXISTS answers (
         id TEXT PRIMARY KEY,
         round_id TEXT NOT NULL,
@@ -80,9 +93,7 @@ export class DatabaseService {
   async recordGame(gameId: string, players: Array<{ userId: string; score: number }>): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const run = promisify(this.db.run.bind(this.db));
-
-    await run('INSERT INTO games (id, status, finished_at) VALUES (?, ?, ?)', [
+    await this.run('INSERT INTO games (id, status, finished_at) VALUES (?, ?, ?)', [
       gameId,
       'finished',
       new Date().toISOString()
@@ -90,7 +101,7 @@ export class DatabaseService {
 
     for (const player of players) {
       const playerId = `${gameId}-${player.userId}`;
-      await run('INSERT INTO players (id, game_id, user_id, score) VALUES (?, ?, ?, ?)', [
+      await this.run('INSERT INTO players (id, game_id, user_id, score) VALUES (?, ?, ?, ?)', [
         playerId,
         gameId,
         player.userId,
@@ -102,12 +113,10 @@ export class DatabaseService {
   async getStats(): Promise<any> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const all = promisify(this.db.all.bind(this.db));
-
-    const games = await all('SELECT COUNT(*) as total_games FROM games');
-    const players = await all('SELECT COUNT(*) as total_players FROM players');
-    const answers = await all('SELECT COUNT(*) as total_answers FROM answers');
-    const topScores = await all(`
+    const games = await this.all('SELECT COUNT(*) as total_games FROM games');
+    const players = await this.all('SELECT COUNT(*) as total_players FROM players');
+    const answers = await this.all('SELECT COUNT(*) as total_answers FROM answers');
+    const topScores = await this.all(`
       SELECT user_id, MAX(score) as high_score
       FROM players
       GROUP BY user_id
