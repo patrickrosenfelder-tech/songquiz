@@ -40,7 +40,14 @@ function GameLobby({ onJoin, onStart, players = [] }) {
           <div className="waiting-section">
             <p className="welcome-message">Welcome, {username}! 🎉</p>
             <div className="players-count">
-              <p>Players joined: {players}</p>
+              <p>Players joined: {players.length}</p>
+              <ul className="players-list">
+                {players.map((player) => (
+                  <li key={player.clientId}>
+                    {player.userId}{player.ready ? ' ✓' : ''}
+                  </li>
+                ))}
+              </ul>
             </div>
             <button onClick={handleStart} className="start-button">
               Ready to Play!
