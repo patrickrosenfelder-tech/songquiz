@@ -26,7 +26,7 @@ export interface Genre {
 
 // Deezer genre ids; 0 is the overall chart
 export const GENRES: Genre[] = [
-  { id: 0, name: 'All' },
+  { id: 0, name: 'Top Hits' },
   { id: 132, name: 'Pop' },
   { id: 152, name: 'Rock' },
   { id: 116, name: 'Rap/Hip Hop' },

@@ -119,3 +119,36 @@
   color: var(--ink-soft);
   font-size: 0.95em;
 }
+
+.score-sub {
+  font-size: 0.9em;
+  color: var(--coral-soft);
+}
+
+.solo-ranks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.solo-rank {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px;
+  background: var(--cream);
+  border-radius: 16px;
+}
+
+.solo-rank-value {
+  font-family: var(--font-display);
+  font-size: 1.8em;
+  font-weight: 700;
+  color: var(--coral);
+}
+
+.solo-rank-label {
+  font-size: 0.85em;
+  color: var(--ink-soft);
+}

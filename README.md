@@ -94,6 +94,13 @@ Starts the backend (port 8080, restarts on code changes) and the React dev serve
 - **Game Over**: Final scores and results
 - **WebSocket Client**: Real-time communication with backend
 
+## Solo Mode and Leaderboards
+
+- **Play solo** (signed in): pick a genre and Artist / Title / Mix, then play 7 songs
+- **Leaderboards** rank each player's best single solo game, per mode, both overall (all genres) and per genre. Ties go to whoever scored first
+- After a solo game you see whether it's a personal best and your rank in that genre and overall
+- Multiplayer and guest games are saved but don't count toward leaderboards
+
 ## How to Play
 
 1. **Create**: Sign in with Google and click "Create game". You're the host 👑
@@ -112,7 +119,7 @@ Songs come from Deezer's genre charts, with iTunes as a fallback for audio and a
 ### WebSocket Messages
 
 **Client to Server:**
-- `join`: Join a game by code (`gameId`), or create one when no code is given
+- `join`: Join a game by code (`gameId`), or create one when no code is given (`solo: true` for a private solo game)
 - `update-settings`: Host changes the genre (`genreId`) or mode (`artist`/`title`/`mix`)
 - `ready`: Player is ready; the game starts when everyone is
 - `answer`: Submit an answer
@@ -124,12 +131,14 @@ Songs come from Deezer's genre charts, with iTunes as a fallback for audio and a
 - `round-started`: New round with audio, question type and options
 - `answer-recorded`: Your answer's result (sent only to you)
 - `round-ended`: Correct answer and scores; next round follows after 5s
-- `game-finished`: Final results
+- `game-finished`: Final results, plus personal best and ranks for solo games
 
 ### REST Endpoints
 
 - `GET /health` - Server health check
 - `GET /api/stats` - Global game statistics
+- `GET /api/genres` - Available genres
+- `GET /api/leaderboard?mode=artist&genre=152` - Top 50 plus your own entry (omit `genre` for overall)
 - `GET /api/config` - Google client ID and whether dev sign-in is available
 - `GET /api/me` - The signed-in user, or `null`
 - `POST /api/auth/google` - Sign in with a Google ID token

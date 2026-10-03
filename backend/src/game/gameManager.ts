@@ -28,6 +28,7 @@ export interface GameSettings {
 
 export interface Game {
   id: string;
+  kind: 'multiplayer' | 'solo';
   hostClientId: string;
   settings: GameSettings;
   players: Player[];
@@ -61,12 +62,13 @@ export class GameManager {
     return code;
   }
 
-  joinGame(gameId: string, userId: string, clientId: string, accountId: string | null = null): Game {
+  joinGame(gameId: string, userId: string, clientId: string, accountId: string | null = null, kind: Game['kind'] = 'multiplayer'): Game {
     let game = this.games.get(gameId);
 
     if (!game) {
       game = {
         id: gameId,
+        kind,
         hostClientId: clientId,
         settings: { genreId: 0, mode: 'artist' },
         players: [],
@@ -269,7 +271,7 @@ export class GameManager {
 
     return {
       code: game.id,
-      kind: 'multiplayer',
+      kind: game.kind,
       genreId: game.settings.genreId,
       questionMode: game.settings.mode,
       startedAt: game.startedAt || new Date(),

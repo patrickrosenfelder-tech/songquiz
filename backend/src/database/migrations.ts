@@ -71,5 +71,12 @@ export const MIGRATIONS: { id: number; name: string; sql: string }[] = [
         FOREIGN KEY (game_id, song_number) REFERENCES game_songs (game_id, song_number) ON DELETE CASCADE
       );
     `
+  },
+  {
+    id: 2,
+    name: 'leaderboard_indexes',
+    sql: `
+      CREATE INDEX games_solo_board ON games (question_mode, genre_id) WHERE kind = 'solo';
+    `
   }
 ];

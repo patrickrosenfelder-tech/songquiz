@@ -4,6 +4,7 @@ import { api } from './api';
 import GameLobby from './components/GameLobby';
 import SignIn from './components/SignIn';
 import DisplayNameSetup from './components/DisplayNameSetup';
+import Leaderboard from './components/Leaderboard';
 import GameScreen from './components/GameScreen';
 import GameOver from './components/GameOver';
 
@@ -16,6 +17,8 @@ function App() {
   const [config, setConfig] = useState(null);
   // Bumped after sign-in/out so the WebSocket reconnects with the new session cookie
   const [connectionKey, setConnectionKey] = useState(0);
+  // Pages outside a game: 'home' (lobby/join) or 'leaderboard'
+  const [view, setView] = useState('home');
   const [gameData, setGameData] = useState({
     gameId: null,
     clientId: null,
@@ -85,6 +88,7 @@ function App() {
           ...prev,
           gameId: message.gameId,
           clientId: message.clientId,
+          kind: message.gameState.kind,
           players: message.gameState.players,
           hostClientId: message.gameState.hostClientId,
           settings: message.gameState.settings,
@@ -151,7 +155,8 @@ function App() {
         setGameState('gameover');
         setGameData((prev) => ({
           ...prev,
-          finalResults: message.results
+          finalResults: message.results,
+          soloSummary: message.solo
         }));
         break;
 
@@ -161,14 +166,15 @@ function App() {
   };
 
   // Without a game code the server creates a new game with this player as host
-  const joinGame = (userId, gameCode) => {
+  const joinGame = (userId, gameCode, { solo = false } = {}) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       setJoinError(null);
       setGameData((prev) => ({ ...prev, userId }));
       ws.send(JSON.stringify({
         type: 'join',
         userId: userId,
-        gameId: gameCode || undefined
+        gameId: gameCode || undefined,
+        solo
       }));
     } else {
       setJoinError("Can't reach the game server. Is it running?");
@@ -218,8 +224,14 @@ function App() {
 
       {needsDisplayName && <DisplayNameSetup onSaved={handleSignedIn} onSignOut={signOut} />}
 
-      {!needsDisplayName && user !== undefined && gameState === 'lobby' && (
+      {!needsDisplayName && user !== undefined && gameState === 'lobby' && view === 'leaderboard' && !gameData.gameId && (
+        <Leaderboard onBack={() => setView('home')} />
+      )}
+
+      {!needsDisplayName && user !== undefined && gameState === 'lobby' && (view === 'home' || gameData.gameId) && (
         <GameLobby
+          gameKind={gameData.kind}
+          onShowLeaderboard={() => setView('leaderboard')}
           user={user}
           signIn={<SignIn config={config} onSignedIn={handleSignedIn} />}
           onJoin={joinGame}
@@ -251,6 +263,8 @@ function App() {
         <GameOver
           finalScore={gameData.score}
           results={gameData.finalResults}
+          soloSummary={gameData.soloSummary}
+          genres={gameData.genres}
           isGuest={!user}
           onRestart={() => {
             window.location.reload();

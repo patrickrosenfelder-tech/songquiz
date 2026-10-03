@@ -1,17 +1,38 @@
 import React from 'react';
 import './GameOver.css';
 
-function GameOver({ finalScore, results, isGuest, onRestart }) {
+const MODE_LABELS = { artist: 'Artist', title: 'Title', mix: 'Mix' };
+
+function GameOver({ finalScore, results, soloSummary, genres = [], isGuest, onRestart }) {
+  const genreName = soloSummary ? ((genres.find((g) => g.id === soloSummary.genreId) || {}).name || '') : '';
+  const modeLabel = soloSummary ? MODE_LABELS[soloSummary.questionMode] : '';
+
   return (
     <div className="gameover-container">
       <div className="card gameover-box">
-        <h2>That's a wrap</h2>
+        <h2>{soloSummary?.personalBest ? 'New personal best!' : "That's a wrap"}</h2>
         <div className="final-score">
           <span className="score-label">Your score</span>
           <span className="score-value">{finalScore.toLocaleString()}</span>
+          {soloSummary && soloSummary.previousBest !== null && !soloSummary.personalBest && (
+            <span className="score-sub">Your best: {soloSummary.previousBest.toLocaleString()}</span>
+          )}
         </div>
 
-        {results && (
+        {soloSummary && (
+          <div className="solo-ranks">
+            <div className="solo-rank">
+              <span className="solo-rank-value">#{soloSummary.genreRank ?? '–'}</span>
+              <span className="solo-rank-label">{genreName} · {modeLabel}</span>
+            </div>
+            <div className="solo-rank">
+              <span className="solo-rank-value">#{soloSummary.overallRank ?? '–'}</span>
+              <span className="solo-rank-label">Overall · {modeLabel}</span>
+            </div>
+          </div>
+        )}
+
+        {results && !soloSummary && (
           <div className="results-section">
             <h3>Final ranking</h3>
             <div className="results-grid">

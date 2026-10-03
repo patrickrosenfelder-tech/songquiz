@@ -85,3 +85,20 @@
 @media (prefers-reduced-motion: reduce) {
   .card { animation: none; }
 }
+
+.btn-secondary {
+  width: 100%;
+  padding: 13px 20px;
+  font-size: 1.05em;
+  font-weight: 700;
+  color: var(--coral);
+  background: var(--paper);
+  border: 1.5px solid var(--coral);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-secondary:hover {
+  background: var(--cream);
+}

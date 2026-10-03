@@ -35,6 +35,15 @@ export interface SavedGame {
   }>;
 }
 
+export interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  displayName: string;
+  score: number;
+  genreId: number;
+  achievedAt: Date;
+}
+
 export class DisplayNameTakenError extends Error {}
 
 const SESSION_DAYS = 30;
@@ -175,6 +184,49 @@ export class DatabaseService {
     } finally {
       client.release();
     }
+  }
+
+  // Each player's best solo game (earliest wins ties), ranked. genreId null = all genres.
+  async getLeaderboard(questionMode: string, genreId: number | null, userId: string | null, limit = 50): Promise<{
+    entries: LeaderboardEntry[];
+    me: LeaderboardEntry | null;
+  }> {
+    const { rows } = await this.pool.query(
+      `WITH best AS (
+         SELECT DISTINCT ON (gp.user_id)
+           gp.user_id, u.display_name, gp.score, g.genre_id, g.finished_at
+         FROM game_players gp
+         JOIN games g ON g.id = gp.game_id
+         JOIN users u ON u.id = gp.user_id
+         WHERE g.kind = 'solo' AND g.question_mode = $1 AND ($2::int IS NULL OR g.genre_id = $2)
+         ORDER BY gp.user_id, gp.score DESC, g.finished_at ASC
+       ), ranked AS (
+         SELECT *, rank() OVER (ORDER BY score DESC, finished_at ASC)::int AS rank FROM best
+       )
+       SELECT * FROM ranked WHERE rank <= $3 OR user_id = $4 ORDER BY rank`,
+      [questionMode, genreId, limit, userId]
+    );
+    const toEntry = (r: any): LeaderboardEntry => ({
+      rank: r.rank,
+      userId: r.user_id,
+      displayName: r.display_name,
+      score: r.score,
+      genreId: r.genre_id,
+      achievedAt: r.finished_at
+    });
+    return {
+      entries: rows.filter(r => r.rank <= limit).map(toEntry),
+      me: userId ? (rows.find(r => r.user_id === userId) ? toEntry(rows.find(r => r.user_id === userId)) : null) : null
+    };
+  }
+
+  async getBestSoloScore(userId: string, questionMode: string, genreId: number | null): Promise<number | null> {
+    const { rows } = await this.pool.query(
+      `SELECT max(gp.score) AS best FROM game_players gp JOIN games g ON g.id = gp.game_id
+       WHERE gp.user_id = $1 AND g.kind = 'solo' AND g.question_mode = $2 AND ($3::int IS NULL OR g.genre_id = $3)`,
+      [userId, questionMode, genreId]
+    );
+    return rows[0].best;
   }
 
   async getStats(): Promise<any> {

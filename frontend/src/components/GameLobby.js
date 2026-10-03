@@ -10,6 +10,8 @@ const MODES = [
 
 function GameLobby({
   user,
+  gameKind,
+  onShowLeaderboard,
   signIn,
   onJoin,
   onStart,
@@ -29,6 +31,7 @@ function GameLobby({
   );
   const [copied, setCopied] = useState(false);
   const joined = !!gameId;
+  const isSolo = gameKind === 'solo';
   const inviteLink = gameId ? `${window.location.origin}/?game=${gameId}` : '';
 
   const isHost = !!clientId && clientId === hostClientId;
@@ -115,14 +118,23 @@ function GameLobby({
   return (
     <div className="lobby-container">
       <div className="card lobby-box">
-        <h2>{joined ? 'The lounge' : 'Drop the needle'}</h2>
-        <p className="description">{joined ? 'Pick your sound, invite friends, and get ready.' : 'Guess songs from 30-second clips. Fastest right answer wins.'}</p>
+        <h2>{!joined ? 'Drop the needle' : isSolo ? 'Solo run' : 'The lounge'}</h2>
+        <p className="description">
+          {!joined
+            ? 'Guess songs from 30-second clips. Fastest right answer wins.'
+            : isSolo
+              ? 'Pick a genre and mode. Your best game counts for the leaderboards.'
+              : 'Pick your sound, invite friends, and get ready.'}
+        </p>
 
         {!joined ? (
           signedIn ? (
             <div className="join-section">
-              <button onClick={() => onJoin(null, '')} className="btn-primary join-button">
-                Create game
+              <button onClick={() => onJoin(null, '', { solo: true })} className="btn-primary join-button">
+                Play solo
+              </button>
+              <button onClick={() => onJoin(null, '')} className="btn-secondary">
+                Play with friends
               </button>
               <div className="divider">or join a friend</div>
               <div className="invite-link-row">
@@ -138,6 +150,7 @@ function GameLobby({
                 <button onClick={handleJoin} className="copy-button" disabled={!code}>Join</button>
               </div>
               {joinError && <p className="join-error">{joinError}</p>}
+              <button className="link-button" onClick={onShowLeaderboard}>View leaderboards</button>
             </div>
           ) : (
             <div className="join-section">
@@ -167,24 +180,25 @@ function GameLobby({
               </button>
               <p className="settings-hint">Guests can play with friends, but scores aren't saved to leaderboards.</p>
               {joinError && <p className="join-error">{joinError}</p>}
+              <button className="link-button" onClick={onShowLeaderboard}>View leaderboards</button>
             </div>
           )
         ) : (
           <div className="waiting-section">
-            <p className="welcome-message">Hi {myName}, you're in.</p>
+            {!isSolo && <p className="welcome-message">Hi {myName}, you're in.</p>}
 
-            <div className="invite-section">
+            {!isSolo && <div className="invite-section">
               <p className="invite-code">Game code: <strong>{gameId}</strong></p>
               <p className="invite-hint">Friends can enter this code, or open the link:</p>
               <div className="invite-link-row">
                 <input className="invite-link" value={inviteLink} readOnly onFocus={(e) => e.target.select()} />
                 <button className="copy-button" onClick={copyInvite}>{copied ? 'Copied!' : 'Copy'}</button>
               </div>
-            </div>
+            </div>}
 
             {renderSettings()}
 
-            <div className="players-count">
+            {!isSolo && <div className="players-count">
               <p>Players joined: {players.length}</p>
               <ul className="players-list">
                 {players.map((player) => (
@@ -196,9 +210,11 @@ function GameLobby({
                   </li>
                 ))}
               </ul>
-            </div>
+            </div>}
             <button onClick={handleStart} className="btn-primary start-button" disabled={isReady}>
-              {!isReady ? "I'm ready" : allReady ? 'Loading songs…' : 'Waiting for other players…'}
+              {isSolo
+                ? (isReady ? 'Loading songs…' : 'Start')
+                : !isReady ? "I'm ready" : allReady ? 'Loading songs…' : 'Waiting for other players…'}
             </button>
             <p className="game-info">
               7 tracks · 30 seconds each · faster answers score more

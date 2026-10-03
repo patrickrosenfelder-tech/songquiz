@@ -7,7 +7,7 @@ import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
 import { GameManager, Player } from './game/gameManager';
-import { DatabaseService } from './database/database';
+import { DatabaseService, LeaderboardEntry } from './database/database';
 import { createAuthRouter, getUserFromCookieHeader } from './auth';
 import { GENRES } from './services/audioService';
 
@@ -137,6 +137,7 @@ async function handleJoinGame(clientId: string, message: any, ws: any, cookieHea
     sendError('Sign in to create a game. Guests can join with a game code.');
     return;
   }
+  const solo = !message.gameId && message.solo === true;
 
   const userId = account ? account.displayName! : String(message.userId || '').trim().slice(0, 20);
   if (!userId) {
@@ -148,7 +149,8 @@ async function handleJoinGame(clientId: string, message: any, ws: any, cookieHea
   if (message.gameId) {
     gameId = String(message.gameId).trim().toUpperCase();
     const existing = gameManager.getGameState(gameId);
-    if (!existing) {
+    // Solo games are private, so treat them like a wrong code
+    if (!existing || existing.kind === 'solo') {
       sendError(`No game found with code ${gameId}. Check the code and try again.`);
       return;
     }
@@ -177,7 +179,7 @@ async function handleJoinGame(clientId: string, message: any, ws: any, cookieHea
 
   clients.set(clientId, client);
 
-  const game = gameManager.joinGame(gameId, userId, clientId, account ? account.id : null);
+  const game = gameManager.joinGame(gameId, userId, clientId, account ? account.id : null, solo ? 'solo' : 'multiplayer');
 
   ws.send(JSON.stringify({
     type: 'game-joined',
@@ -185,6 +187,7 @@ async function handleJoinGame(clientId: string, message: any, ws: any, cookieHea
     clientId,
     genres: GENRES,
     gameState: {
+      kind: game.kind,
       players: game.players.map(publicPlayer),
       hostClientId: game.hostClientId,
       settings: game.settings,
@@ -263,7 +266,7 @@ async function handlePlayerReady(clientId: string, message: any) {
 async function startRound(gameId: string) {
   const game = await gameManager.startNextRound(gameId);
   if (game.status === 'finished') {
-    finishGame(gameId);
+    await finishGame(gameId);
     return;
   }
 
@@ -302,26 +305,51 @@ function endRound(gameId: string) {
 
   setRoundTimer(gameId, () => {
     if (isLastRound) {
-      finishGame(gameId);
+      finishGame(gameId).catch(err => console.error('Failed to finish game:', err));
     } else {
       startRound(gameId).catch(err => console.error('Failed to start round:', err));
     }
   }, NEXT_ROUND_DELAY);
 }
 
-function finishGame(gameId: string) {
+async function finishGame(gameId: string) {
   clearRoundTimer(gameId);
+  const game = gameManager.getGameState(gameId);
+  const saved = gameManager.toSavedGame(gameId);
   const results = gameManager.finishGame(gameId);
+
+  // Solo players see whether they set a personal best and where they rank
+  let soloSummary = null;
+  const soloAccount = game?.kind === 'solo' ? game.players[0]?.accountId : null;
+  if (saved && soloAccount) {
+    try {
+      const { genreId, questionMode } = saved;
+      const previousBest = await db.getBestSoloScore(soloAccount, questionMode, genreId);
+      await db.saveGame(saved);
+      const [genreBoard, overallBoard] = await Promise.all([
+        db.getLeaderboard(questionMode, genreId, soloAccount, 0),
+        db.getLeaderboard(questionMode, null, soloAccount, 0)
+      ]);
+      soloSummary = {
+        genreId,
+        questionMode,
+        previousBest,
+        personalBest: previousBest === null || saved.players[0].score > previousBest,
+        genreRank: genreBoard.me?.rank ?? null,
+        overallRank: overallBoard.me?.rank ?? null
+      };
+    } catch (err) {
+      console.error('Failed to save solo game:', err);
+    }
+  } else if (saved) {
+    db.saveGame(saved).catch(err => console.error('Failed to save game:', err));
+  }
 
   broadcastToGame(gameId, {
     type: 'game-finished',
-    results
+    results,
+    solo: soloSummary
   });
-
-  const saved = gameManager.toSavedGame(gameId);
-  if (saved) {
-    db.saveGame(saved).catch(err => console.error('Failed to save game:', err));
-  }
 }
 
 // What other players may see about a player; account ids stay on the server
@@ -339,6 +367,31 @@ function broadcastToGame(gameId: string, message: any) {
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
+});
+
+app.get('/api/genres', (req, res) => {
+  res.json({ genres: GENRES });
+});
+
+// ?mode=artist|title|mix&genre=<id> (omit genre for the overall board)
+app.get('/api/leaderboard', (req, res, next) => {
+  const mode = String(req.query.mode || 'artist');
+  if (!['artist', 'title', 'mix'].includes(mode)) {
+    res.status(400).json({ error: 'Unknown mode.' });
+    return;
+  }
+  const genre = req.query.genre !== undefined && req.query.genre !== '' ? Number(req.query.genre) : null;
+  if (genre !== null && !GENRES.some(g => g.id === genre)) {
+    res.status(400).json({ error: 'Unknown genre.' });
+    return;
+  }
+  (async () => {
+    const user = await getUserFromCookieHeader(db, req.headers.cookie);
+    const board = await db.getLeaderboard(mode, genre, user ? user.id : null);
+    // Account ids stay on the server; isMe lets the page highlight your row
+    const publicEntry = ({ userId, ...e }: LeaderboardEntry) => ({ ...e, isMe: !!user && userId === user.id });
+    res.json({ entries: board.entries.map(publicEntry), me: board.me ? publicEntry(board.me) : null });
+  })().catch(next);
 });
 
 app.get('/api/stats', (req, res, next) => {

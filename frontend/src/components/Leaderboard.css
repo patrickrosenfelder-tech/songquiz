@@ -1,0 +1,94 @@
+.back-button {
+  align-self: flex-start;
+  margin: -8px 0 8px -4px;
+  text-decoration: none;
+}
+
+.board {
+  margin-top: 20px;
+}
+
+.board-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.board-row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--cream);
+  border-radius: 999px;
+}
+
+.board-row.is-me {
+  background: var(--coral);
+  color: white;
+}
+
+.board-rank {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.1em;
+  color: var(--coral);
+  text-align: center;
+}
+
+.board-row.top-1 .board-rank::before { content: '🥇'; }
+.board-row.top-2 .board-rank::before { content: '🥈'; }
+.board-row.top-3 .board-rank::before { content: '🥉'; }
+.board-row.top-1 .board-rank,
+.board-row.top-2 .board-rank,
+.board-row.top-3 .board-rank {
+  font-size: 0;
+}
+.board-row.top-1 .board-rank::before,
+.board-row.top-2 .board-rank::before,
+.board-row.top-3 .board-rank::before {
+  font-size: 18px;
+}
+
+.board-row.is-me .board-rank {
+  color: white;
+}
+
+.board-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.board-genre {
+  margin-left: 8px;
+  font-size: 0.8em;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.board-score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-empty {
+  margin: 12px 0;
+  text-align: center;
+  color: var(--ink-soft);
+}
+
+.board-you {
+  margin: 14px 0 6px;
+  font-size: 0.85em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
