@@ -6,8 +6,9 @@ import { join } from 'path';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
-import { GameManager } from './game/gameManager';
+import { GameManager, Player } from './game/gameManager';
 import { DatabaseService } from './database/database';
+import { createAuthRouter, getUserFromCookieHeader } from './auth';
 import { GENRES } from './services/audioService';
 
 const app = express();
@@ -23,8 +24,11 @@ const db = new DatabaseService();
 db.initialize().then(() => {
   console.log('Database initialized');
 }).catch(err => {
-  console.error('Database initialization failed:', err);
+  console.error('Database initialization failed. Is Postgres running and DATABASE_URL set?', err.message);
+  process.exit(1);
 });
+
+app.use('/api', createAuthRouter(db));
 
 interface GameClient {
   id: string;
@@ -55,14 +59,16 @@ function clearRoundTimer(gameId: string) {
   }
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   const clientId = uuidv4();
+  // Browsers send the session cookie with the WebSocket upgrade; the account is looked up on join
+  const cookieHeader = req.headers.cookie;
   console.log(`Client connected: ${clientId}`);
 
   ws.on('message', (data) => {
     try {
       const message = JSON.parse(data.toString());
-      handleWebSocketMessage(clientId, message, ws);
+      handleWebSocketMessage(clientId, message, ws, cookieHeader);
     } catch (err) {
       console.error('Error parsing message:', err);
       ws.send(JSON.stringify({ error: 'Invalid message format' }));
@@ -93,10 +99,13 @@ wss.on('connection', (ws) => {
   });
 });
 
-function handleWebSocketMessage(clientId: string, message: any, ws: any) {
+function handleWebSocketMessage(clientId: string, message: any, ws: any, cookieHeader?: string) {
   switch (message.type) {
     case 'join':
-      handleJoinGame(clientId, message, ws);
+      handleJoinGame(clientId, message, ws, cookieHeader).catch(err => {
+        console.error('Join failed:', err);
+        ws.send(JSON.stringify({ type: 'error', message: 'Something went wrong joining. Try again.' }));
+      });
       break;
     case 'answer':
       handleAnswer(clientId, message);
@@ -112,13 +121,26 @@ function handleWebSocketMessage(clientId: string, message: any, ws: any) {
   }
 }
 
-function handleJoinGame(clientId: string, message: any, ws: any) {
+// Signed-in players use their display name; guests can only join an existing game by code
+async function handleJoinGame(clientId: string, message: any, ws: any, cookieHeader?: string) {
   if (clients.has(clientId)) return;
 
   const sendError = (text: string) => ws.send(JSON.stringify({ type: 'error', message: text }));
-  const userId = String(message.userId || '').trim().slice(0, 20);
+  const account = await getUserFromCookieHeader(db, cookieHeader);
+  if (clients.has(clientId)) return;
+
+  if (account && !account.displayName) {
+    sendError('Choose a display name first.');
+    return;
+  }
+  if (!account && !message.gameId) {
+    sendError('Sign in to create a game. Guests can join with a game code.');
+    return;
+  }
+
+  const userId = account ? account.displayName! : String(message.userId || '').trim().slice(0, 20);
   if (!userId) {
-    sendError('Please enter a username.');
+    sendError('Enter a name.');
     return;
   }
 
@@ -132,6 +154,10 @@ function handleJoinGame(clientId: string, message: any, ws: any) {
     }
     if (existing.status !== 'waiting') {
       sendError('That game has already started.');
+      return;
+    }
+    if (account && existing.players.some(p => p.accountId === account.id)) {
+      sendError("You're already in this game in another tab.");
       return;
     }
     if (existing.players.some(p => p.userId.toLowerCase() === userId.toLowerCase())) {
@@ -151,7 +177,7 @@ function handleJoinGame(clientId: string, message: any, ws: any) {
 
   clients.set(clientId, client);
 
-  const game = gameManager.joinGame(gameId, userId, clientId);
+  const game = gameManager.joinGame(gameId, userId, clientId, account ? account.id : null);
 
   ws.send(JSON.stringify({
     type: 'game-joined',
@@ -159,7 +185,7 @@ function handleJoinGame(clientId: string, message: any, ws: any) {
     clientId,
     genres: GENRES,
     gameState: {
-      players: game.players,
+      players: game.players.map(publicPlayer),
       hostClientId: game.hostClientId,
       settings: game.settings,
       currentRound: game.currentRound,
@@ -188,7 +214,7 @@ function broadcastLobby(gameId: string) {
   if (!game) return;
   broadcastToGame(gameId, {
     type: 'lobby-updated',
-    players: game.players,
+    players: game.players.map(publicPlayer),
     hostClientId: game.hostClientId,
     settings: game.settings
   });
@@ -269,7 +295,7 @@ function endRound(gameId: string) {
     correctAnswer: round.song.correctAnswer,
     artist: round.song.artist,
     title: round.song.title,
-    scores: game.players.map(p => ({ userId: p.userId, clientId: p.clientId, score: p.score })),
+    scores: game.players.map(publicPlayer),
     isLastRound,
     nextIn: NEXT_ROUND_DELAY / 1000
   });
@@ -292,8 +318,15 @@ function finishGame(gameId: string) {
     results
   });
 
-  db.recordGame(gameId, results.map(r => ({ userId: r.player, score: r.score })))
-    .catch(err => console.error('Failed to record game:', err));
+  const saved = gameManager.toSavedGame(gameId);
+  if (saved) {
+    db.saveGame(saved).catch(err => console.error('Failed to save game:', err));
+  }
+}
+
+// What other players may see about a player; account ids stay on the server
+function publicPlayer(p: Player) {
+  return { userId: p.userId, clientId: p.clientId, isGuest: p.isGuest, score: p.score, ready: p.ready };
 }
 
 function broadcastToGame(gameId: string, message: any) {
@@ -308,9 +341,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.get('/api/stats', async (req, res) => {
-  const stats = await db.getStats();
-  res.json(stats);
+app.get('/api/stats', (req, res, next) => {
+  db.getStats().then(stats => res.json(stats)).catch(next);
 });
 
 // Serve the built frontend so the whole game runs on one port (npm start).
@@ -321,6 +353,11 @@ if (servesFrontend) {
   app.use(express.static(frontendBuild));
   app.get('*', (req, res) => res.sendFile(join(frontendBuild, 'index.html')));
 }
+
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Request failed:', err);
+  res.status(500).json({ error: 'Something went wrong. Try again.' });
+});
 
 function lanAddresses(): string[] {
   return Object.values(networkInterfaces())

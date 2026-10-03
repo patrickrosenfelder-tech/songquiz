@@ -1,0 +1,111 @@
+.sign-in {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.google-button {
+  min-height: 44px;
+}
+
+.auth-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.9em;
+}
+
+.dev-login {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1.5px dashed var(--coral-soft);
+  border-radius: 14px;
+}
+
+.dev-login-label {
+  font-size: 0.8em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.dev-login-row {
+  display: flex;
+  gap: 8px;
+}
+
+.dev-login-row .username-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+}
+
+.link-button {
+  align-self: center;
+  padding: 4px;
+  font-size: 0.9em;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--coral);
+}
+
+/* Header account chip */
+.account-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 0.9em;
+  color: var(--ink-soft);
+}
+
+.account-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--coral-soft);
+}
+
+.account-name {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+  color: var(--ink-soft);
+  font-size: 0.85em;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--coral-soft);
+}
+
+.guest-tag {
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 0.75em;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: var(--paper);
+  border-radius: 999px;
+}

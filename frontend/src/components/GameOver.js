@@ -1,7 +1,7 @@
 import React from 'react';
 import './GameOver.css';
 
-function GameOver({ finalScore, results, onRestart }) {
+function GameOver({ finalScore, results, isGuest, onRestart }) {
   return (
     <div className="gameover-container">
       <div className="card gameover-box">
@@ -24,6 +24,10 @@ function GameOver({ finalScore, results, onRestart }) {
               ))}
             </div>
           </div>
+        )}
+
+        {isGuest && (
+          <p className="guest-note">Playing as a guest. Sign in next time to save your scores and climb the leaderboards.</p>
         )}
 
         <button onClick={onRestart} className="btn-primary play-again-button">

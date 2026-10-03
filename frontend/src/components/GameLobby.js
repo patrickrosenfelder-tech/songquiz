@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import './GameLobby.css';
+import './Auth.css';
 
 const MODES = [
   { id: 'artist', label: 'Artist' },
@@ -8,6 +9,8 @@ const MODES = [
 ];
 
 function GameLobby({
+  user,
+  signIn,
   onJoin,
   onStart,
   onSettingsChange,
@@ -35,9 +38,16 @@ function GameLobby({
   const genreName = (genres.find((g) => g.id === settings?.genreId) || {}).name || 'All';
   const modeLabel = (MODES.find((m) => m.id === settings?.mode) || MODES[0]).label;
 
+  const signedIn = !!user;
+  const code = gameCode.trim().toUpperCase();
+  const myName = signedIn ? user.displayName : username.trim();
+
+  // Signed-in players create or join with their account name; guests need a name and a code
   const handleJoin = () => {
-    if (username.trim()) {
-      onJoin(username.trim(), gameCode.trim().toUpperCase());
+    if (signedIn) {
+      onJoin(null, code);
+    } else if (username.trim() && code) {
+      onJoin(username.trim(), code);
     }
   };
 
@@ -109,33 +119,59 @@ function GameLobby({
         <p className="description">{joined ? 'Pick your sound, invite friends, and get ready.' : 'Guess songs from 30-second clips. Fastest right answer wins.'}</p>
 
         {!joined ? (
-          <div className="join-section">
-            <input
-              type="text"
-              placeholder="Enter your username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleJoin()}
-              className="username-input"
-              maxLength={20}
-            />
-            <input
-              type="text"
-              placeholder="Game code (leave empty to create a new game)"
-              value={gameCode}
-              onChange={(e) => setGameCode(e.target.value.toUpperCase())}
-              onKeyPress={(e) => e.key === 'Enter' && handleJoin()}
-              className="username-input game-code-input"
-              maxLength={5}
-            />
-            <button onClick={handleJoin} className="btn-primary join-button" disabled={!username.trim()}>
-              {gameCode.trim() ? 'Join game' : 'Create game'}
-            </button>
-            {joinError && <p className="join-error">{joinError}</p>}
-          </div>
+          signedIn ? (
+            <div className="join-section">
+              <button onClick={() => onJoin(null, '')} className="btn-primary join-button">
+                Create game
+              </button>
+              <div className="divider">or join a friend</div>
+              <div className="invite-link-row">
+                <input
+                  type="text"
+                  placeholder="Game code"
+                  value={gameCode}
+                  onChange={(e) => setGameCode(e.target.value.toUpperCase())}
+                  onKeyPress={(e) => e.key === 'Enter' && code && handleJoin()}
+                  className="username-input game-code-input"
+                  maxLength={5}
+                />
+                <button onClick={handleJoin} className="copy-button" disabled={!code}>Join</button>
+              </div>
+              {joinError && <p className="join-error">{joinError}</p>}
+            </div>
+          ) : (
+            <div className="join-section">
+              <p className="settings-hint">Sign in to create games and save your scores.</p>
+              {signIn}
+              <div className="divider">got a game code? join as a guest</div>
+              <input
+                type="text"
+                placeholder="Your name"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleJoin()}
+                className="username-input"
+                maxLength={20}
+              />
+              <input
+                type="text"
+                placeholder="Game code"
+                value={gameCode}
+                onChange={(e) => setGameCode(e.target.value.toUpperCase())}
+                onKeyPress={(e) => e.key === 'Enter' && handleJoin()}
+                className="username-input game-code-input"
+                maxLength={5}
+              />
+              <button onClick={handleJoin} className="btn-primary join-button" disabled={!username.trim() || !code}>
+                Join as guest
+              </button>
+              <p className="settings-hint">Guests can play with friends, but scores aren't saved to leaderboards.</p>
+              {joinError && <p className="join-error">{joinError}</p>}
+            </div>
+          )
         ) : (
           <div className="waiting-section">
-            <p className="welcome-message">Hi {username}, you're in.</p>
+            <p className="welcome-message">Hi {myName}, you're in.</p>
 
             <div className="invite-section">
               <p className="invite-code">Game code: <strong>{gameId}</strong></p>
@@ -154,6 +190,7 @@ function GameLobby({
                 {players.map((player) => (
                   <li key={player.clientId}>
                     {player.userId}
+                    {player.isGuest && <span className="guest-tag">guest</span>}
                     {player.clientId === hostClientId ? ' 👑' : ''}
                     {player.ready ? ' ✓' : ''}
                   </li>
@@ -164,7 +201,7 @@ function GameLobby({
               {!isReady ? "I'm ready" : allReady ? 'Loading songs…' : 'Waiting for other players…'}
             </button>
             <p className="game-info">
-              10 tracks · 30 seconds each · faster answers score more
+              7 tracks · 30 seconds each · faster answers score more
             </p>
           </div>
         )}

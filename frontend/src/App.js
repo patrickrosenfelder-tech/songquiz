@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
+import { api } from './api';
 import GameLobby from './components/GameLobby';
+import SignIn from './components/SignIn';
+import DisplayNameSetup from './components/DisplayNameSetup';
 import GameScreen from './components/GameScreen';
 import GameOver from './components/GameOver';
 
@@ -8,16 +11,38 @@ function App() {
   const [gameState, setGameState] = useState('lobby');
   const [ws, setWs] = useState(null);
   const [joinError, setJoinError] = useState(null);
+  // undefined while loading, null when signed out
+  const [user, setUser] = useState(undefined);
+  const [config, setConfig] = useState(null);
+  // Bumped after sign-in/out so the WebSocket reconnects with the new session cookie
+  const [connectionKey, setConnectionKey] = useState(0);
   const [gameData, setGameData] = useState({
     gameId: null,
     clientId: null,
     userId: null,
     players: [],
     currentRound: 0,
-    totalRounds: 10,
+    totalRounds: 7,
     score: 0,
     currentSong: null
   });
+
+  useEffect(() => {
+    api('/config').then(setConfig).catch(() => setConfig({ googleClientId: null, devLogin: false }));
+    api('/me').then(({ user }) => setUser(user)).catch(() => setUser(null));
+  }, []);
+
+  const handleSignedIn = useCallback((signedInUser) => {
+    setUser(signedInUser);
+    setConnectionKey((k) => k + 1);
+  }, []);
+
+  const signOut = async () => {
+    await api('/auth/logout', { method: 'POST' }).catch(() => {});
+    window.google?.accounts?.id?.disableAutoSelect();
+    setUser(null);
+    setConnectionKey((k) => k + 1);
+  };
 
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -51,7 +76,7 @@ function App() {
         websocket.close();
       }
     };
-  }, []);
+  }, [connectionKey]);
 
   const handleServerMessage = (message) => {
     switch (message.type) {
@@ -173,15 +198,30 @@ function App() {
     }
   };
 
+  const needsDisplayName = !!user && !user.displayName;
+
   return (
     <div className="App">
       <header className="App-header">
         <h1>Tune<span className="accent">Duel</span></h1>
         <p className="App-tagline">Music trivia with friends</p>
+        {user && user.displayName && (
+          <div className="account-bar">
+            {user.avatarUrl && <img className="account-avatar" src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />}
+            <span className="account-name">{user.displayName}</span>
+            {gameState === 'lobby' && !gameData.gameId && (
+              <button className="link-button" onClick={signOut}>Sign out</button>
+            )}
+          </div>
+        )}
       </header>
 
-      {gameState === 'lobby' && (
+      {needsDisplayName && <DisplayNameSetup onSaved={handleSignedIn} onSignOut={signOut} />}
+
+      {!needsDisplayName && user !== undefined && gameState === 'lobby' && (
         <GameLobby
+          user={user}
+          signIn={<SignIn config={config} onSignedIn={handleSignedIn} />}
           onJoin={joinGame}
           onStart={startGame}
           onSettingsChange={updateSettings}
@@ -211,6 +251,7 @@ function App() {
         <GameOver
           finalScore={gameData.score}
           results={gameData.finalResults}
+          isGuest={!user}
           onRestart={() => {
             window.location.reload();
           }}

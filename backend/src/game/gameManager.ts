@@ -1,5 +1,5 @@
 import { AudioService, GENRES, QuestionType, Song, Track } from '../services/audioService';
-import { v4 as uuidv4 } from 'uuid';
+import { SavedGame } from '../database/database';
 
 export interface GameRound {
   roundNumber: number;
@@ -10,8 +10,11 @@ export interface GameRound {
 }
 
 export interface Player {
+  // Display name: the account's name, or the name a guest typed
   userId: string;
   clientId: string;
+  accountId: string | null;
+  isGuest: boolean;
   score: number;
   ready: boolean;
 }
@@ -35,12 +38,13 @@ export interface Game {
   currentSong?: Song;
   songPool: Track[];
   nextTrackIndex: number;
+  startedAt?: Date;
 }
 
 export class GameManager {
   private games: Map<string, Game> = new Map();
   private audioService: AudioService;
-  private readonly TOTAL_ROUNDS = 10;
+  private readonly TOTAL_ROUNDS = 7;
   readonly ANSWER_TIMEOUT = 30000; // 30 seconds
 
   constructor() {
@@ -57,7 +61,7 @@ export class GameManager {
     return code;
   }
 
-  joinGame(gameId: string, userId: string, clientId: string): Game {
+  joinGame(gameId: string, userId: string, clientId: string, accountId: string | null = null): Game {
     let game = this.games.get(gameId);
 
     if (!game) {
@@ -80,6 +84,8 @@ export class GameManager {
       game.players.push({
         userId,
         clientId,
+        accountId,
+        isGuest: !accountId,
         score: 0,
         ready: false
       });
@@ -118,6 +124,7 @@ export class GameManager {
     const game = this.games.get(gameId);
     if (!game) throw new Error('Game not found');
     game.songPool = await this.audioService.getSongPool(game.settings.genreId);
+    game.startedAt = new Date();
     game.nextTrackIndex = 0;
     game.totalRounds = Math.min(this.TOTAL_ROUNDS, game.songPool.length);
   }
@@ -250,6 +257,49 @@ export class GameManager {
     return [...game.players]
       .sort((a, b) => b.score - a.score)
       .map(p => ({ player: p.userId, score: p.score }));
+  }
+
+  // Snapshot of a finished game in the shape the database stores
+  toSavedGame(gameId: string): SavedGame | null {
+    const game = this.games.get(gameId);
+    if (!game || game.rounds.length === 0) return null;
+
+    const players = [...game.players].sort((a, b) => b.score - a.score);
+    const indexByClient = new Map(players.map((p, i) => [p.clientId, i]));
+
+    return {
+      code: game.id,
+      kind: 'multiplayer',
+      genreId: game.settings.genreId,
+      questionMode: game.settings.mode,
+      startedAt: game.startedAt || new Date(),
+      players: players.map(p => ({
+        userId: p.accountId,
+        name: p.userId,
+        isGuest: p.isGuest,
+        score: p.score,
+        correctCount: game.rounds.filter(r => r.answers.get(p.clientId)?.correct).length
+      })),
+      songs: game.rounds.map(r => ({
+        trackId: r.song.id,
+        deezerId: game.songPool.find(t => t.id === r.song.id)?.deezerId,
+        title: r.song.title,
+        artist: r.song.artist,
+        questionType: r.song.questionType,
+        correctAnswer: r.song.correctAnswer,
+        options: r.song.options,
+        // Players who left mid-game aren't saved, so neither are their answers
+        answers: Array.from(r.answers.entries())
+          .filter(([clientId]) => indexByClient.has(clientId))
+          .map(([clientId, a]) => ({
+            playerIndex: indexByClient.get(clientId)!,
+            answer: a.answer,
+            correct: a.correct,
+            points: a.points,
+            timeMs: a.timeSpent
+          }))
+      }))
+    };
   }
 
   getGameState(gameId: string): Game | undefined {

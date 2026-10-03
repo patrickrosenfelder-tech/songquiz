@@ -5,7 +5,7 @@
 ## Features
 
 - **Real-time Multiplayer**: Play with other users using WebSocket technology
-- **10-Song Sessions**: Each game features 10 different songs
+- **7-Song Games**: Each game features 7 different songs
 - **Points System**: Earn points based on speed and accuracy
 - **Score Tracking**: Database-backed player statistics
 - **Genres & Modes**: Pick a Deezer genre and guess the artist, the title, or a mix
@@ -24,16 +24,36 @@
 
 ## Prerequisites
 
-- Node.js 16+ and npm 7+
-- For API features: Deezer API key (optional) or Apple Music token (optional)
+- Node.js 22+ and npm 7+
+- PostgreSQL 14+ (locally: `brew install postgresql@17`)
 
 ## Installation & Setup
 
 ```bash
 npm install
+createdb tuneduel
+cp backend/.env.example backend/.env
 ```
 
-This installs dependencies for both backend and frontend using npm workspaces.
+The backend creates its tables on first start. Settings live in `backend/.env`:
+
+- `DATABASE_URL`: Postgres connection (default `postgres://localhost/tuneduel`)
+- `GOOGLE_CLIENT_ID`: enables Google sign-in (see below). Without it, a local-only dev sign-in is shown instead
+
+### Google sign-in
+
+1. In the [Google Cloud console](https://console.cloud.google.com), create a project (e.g. "TuneDuel")
+2. Under **Google Auth Platform → Branding**, set the app name and support email; under **Audience**, choose **External** and add yourself as a test user
+3. Under **Clients**, create an **OAuth client ID** of type **Web application**
+4. Add **Authorized JavaScript origins**: `http://localhost:3001` and `http://localhost:8080` (plus your production URL later). No redirect URI is needed
+5. Put the client ID in `backend/.env` as `GOOGLE_CLIENT_ID=...` and restart the server
+
+Google only allows sign-in from `localhost` or HTTPS origins, so friends opening your Wi-Fi address (`http://10.0.0.x:8080`) can join as guests but can't sign in until the game is deployed with HTTPS.
+
+## Accounts and Guests
+
+- **Signed in** (Google): pick a unique display name once; can create games, and scores are saved
+- **Guests**: join an existing game with a code or invite link; they play normally, but their scores don't count toward leaderboards
 
 ## Hosting a Game
 
@@ -76,14 +96,14 @@ Starts the backend (port 8080, restarts on code changes) and the React dev serve
 
 ## How to Play
 
-1. **Create**: Enter a username and leave the game code empty to create a game. You're the host 👑
+1. **Create**: Sign in with Google and click "Create game". You're the host 👑
 2. **Invite**: Share the game code or invite link shown in the lobby
 3. **Choose**: The host picks a genre and whether to guess the artist, the title, or a mix
 4. **Start**: The game starts when every player clicks "Ready to Play!"
 5. **Listen & answer**: Each round plays a 30-second preview; pick the right answer from 4 options
 6. **Score**: Faster correct answers earn more points (up to 1000)
 7. **Reveal**: The round ends when everyone answered or time runs out; the next song starts 5 seconds later
-8. **Results**: After 10 songs, view the final rankings
+8. **Results**: After 7 songs, view the final rankings
 
 Songs come from Deezer's genre charts, with iTunes as a fallback for audio and a built-in song list if Deezer is unreachable.
 
@@ -110,15 +130,23 @@ Songs come from Deezer's genre charts, with iTunes as a fallback for audio and a
 
 - `GET /health` - Server health check
 - `GET /api/stats` - Global game statistics
+- `GET /api/config` - Google client ID and whether dev sign-in is available
+- `GET /api/me` - The signed-in user, or `null`
+- `POST /api/auth/google` - Sign in with a Google ID token
+- `POST /api/auth/dev` - Local-only test sign-in (disabled in production)
+- `POST /api/auth/logout` - Sign out
+- `PUT /api/me/display-name` - Set your display name
 
 ## Database Schema
 
-### Tables
+Postgres, with migrations in `backend/src/database/migrations.ts` applied at startup.
 
-- **games**: Game sessions with timestamps
-- **players**: Players and their scores per game
-- **rounds**: Individual rounds with song data
-- **answers**: Player answers with points earned
+- **users**: Google account and unique display name
+- **sessions**: login sessions (only a hash of the cookie token is stored)
+- **games**: finished games with genre, mode and song count
+- **game_players**: final ranking per game; `user_id` is empty for guests
+- **game_songs**: the songs played, with the answer options shown
+- **answers**: every answer with points and answer time
 
 ## Running Tests
 
