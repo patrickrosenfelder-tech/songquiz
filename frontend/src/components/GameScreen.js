@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './GameScreen.css';
+import { playSong, stopSong, unlockAudio } from '../audioPlayer';
 
 function GameScreen({ song, round, totalRounds, matchRound, matchRounds, score, answerResult, roundResult, onAnswerSubmit }) {
   const [timeLeft, setTimeLeft] = useState(30);
@@ -8,7 +9,6 @@ function GameScreen({ song, round, totalRounds, matchRound, matchRounds, score, 
   const [nextIn, setNextIn] = useState(null);
   // Browsers can block autoplay; then the player gets a one-time "tap to play" button
   const [audioBlocked, setAudioBlocked] = useState(false);
-  const audioRef = useRef(null);
   // Latest handleSubmit, so the countdown effect doesn't restart on every render
   const handleSubmitRef = useRef();
   const roundOver = !!roundResult;
@@ -31,18 +31,19 @@ function GameScreen({ song, round, totalRounds, matchRound, matchRounds, score, 
   }, [song]);
 
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
+    if (!song.audioUrl) return;
     setAudioBlocked(false);
-    audio.play().catch((err) => {
+    playSong(song.audioUrl, { onPlaying: () => setAudioBlocked(false) }).catch((err) => {
       // AbortError just means a newer play/pause interrupted this one
       if (err.name === 'NotAllowedError') setAudioBlocked(true);
     });
-    return () => audio.pause();
+    return () => stopSong();
   }, [song.audioUrl]);
 
+  // This tap also unlocks the shared player, so later songs autoplay
   const startBlockedAudio = () => {
-    audioRef.current?.play().then(() => setAudioBlocked(false)).catch(() => {});
+    unlockAudio();
+    playSong(song.audioUrl, { onPlaying: () => setAudioBlocked(false) }).catch(() => {});
   };
 
   // Countdown to the next song once the server reveals the answer
@@ -119,16 +120,7 @@ function GameScreen({ song, round, totalRounds, matchRound, matchRounds, score, 
         </div>
 
         <div className="turntable">
-          {song.audioUrl && (
-            // No controls: players can't pause or skip ahead
-            <audio
-              ref={audioRef}
-              key={song.audioUrl}
-              src={song.audioUrl}
-              preload="auto"
-              onPlaying={() => setAudioBlocked(false)}
-            />
-          )}
+          {/* Audio plays through the shared player in audioPlayer.js; no controls, so no pausing or skipping */}
           <div className={`vinyl ${spinning ? 'spinning' : ''}`} aria-hidden="true">
             <div className="vinyl-label">
               <span className="vinyl-hole" />

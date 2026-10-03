@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import { api } from './api';
+import { unlockAudio } from './audioPlayer';
+import { shareOrigin } from './shareOrigin';
 import GameLobby from './components/GameLobby';
 import SignIn from './components/SignIn';
 import DisplayNameSetup from './components/DisplayNameSetup';
@@ -232,7 +234,10 @@ function App() {
   };
 
   // Without a game code the server creates a new game with this player as host
+  // joinGame, startGame, pickRound and submitAnswer run inside taps, which is when iOS
+  // allows unlocking audio for the songs that follow
   const joinGame = (userId, gameCode, { solo = false, challenge } = {}) => {
+    unlockAudio();
     if (ws && ws.readyState === WebSocket.OPEN) {
       setJoinError(null);
       setGameData((prev) => ({ ...prev, userId }));
@@ -249,6 +254,7 @@ function App() {
   };
 
   const submitAnswer = (answer) => {
+    unlockAudio();
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'answer',
@@ -264,12 +270,14 @@ function App() {
   };
 
   const pickRound = (choice) => {
+    unlockAudio();
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'pick-round', ...choice }));
     }
   };
 
   const startGame = () => {
+    unlockAudio();
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
         type: 'ready'
@@ -342,6 +350,7 @@ function App() {
         <GameLobby
           gameKind={gameData.kind}
           onShowLeaderboard={() => setView('leaderboard')}
+          shareOrigin={shareOrigin(config)}
           user={user}
           signIn={<SignIn config={config} onSignedIn={handleSignedIn} />}
           onJoin={joinGame}
@@ -387,6 +396,7 @@ function App() {
           results={gameData.finalResults}
           soloSummary={gameData.soloSummary}
           challengeSummary={gameData.challengeSummary}
+          shareOrigin={shareOrigin(config)}
           canChallenge={!!user}
           matchRounds={gameData.matchRounds}
           genres={gameData.genres}

@@ -12,6 +12,7 @@ function GameLobby({
   user,
   gameKind,
   onShowLeaderboard,
+  shareOrigin,
   signIn,
   onJoin,
   onStart,
@@ -32,7 +33,7 @@ function GameLobby({
   const [copied, setCopied] = useState(false);
   const joined = !!gameId;
   const isSolo = gameKind === 'solo';
-  const inviteLink = gameId ? `${window.location.origin}/?game=${gameId}` : '';
+  const inviteLink = gameId ? `${shareOrigin || window.location.origin}/?game=${gameId}` : '';
 
   const isHost = !!clientId && clientId === hostClientId;
   const me = players.find((p) => p.clientId === clientId);

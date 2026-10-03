@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { parse as parseCookies, serialize as serializeCookie } from 'cookie';
 import { OAuth2Client } from 'google-auth-library';
 import { DatabaseService, DisplayNameTakenError, User } from './database/database';
+import { wifiAddress } from './network';
 
 const SESSION_COOKIE = 'tuneduel_session';
 const DISPLAY_NAME_PATTERN = /^[\p{L}\p{N}_.\- ]{3,20}$/u;
@@ -51,7 +52,13 @@ export function createAuthRouter(db: DatabaseService): Router {
 
   // The frontend reads this at startup instead of baking the client ID into the build
   router.get('/config', (req, res) => {
-    res.json({ googleClientId: googleClientId || null, devLogin: !isProduction() });
+    res.json({
+      googleClientId: googleClientId || null,
+      devLogin: !isProduction(),
+      // Base for invite and challenge links; PUBLIC_URL wins once the game has a real domain
+      publicUrl: process.env.PUBLIC_URL || null,
+      wifiAddress: wifiAddress()
+    });
   });
 
   router.get('/me', wrap(async (req, res) => {

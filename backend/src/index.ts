@@ -1,7 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { existsSync } from 'fs';
-import { networkInterfaces } from 'os';
+import { isVpnAddress, lanAddresses } from './network';
 import { join } from 'path';
 import { WebSocketServer } from 'ws';
 import cors from 'cors';
@@ -602,12 +602,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ error: 'Something went wrong. Try again.' });
 });
 
-function lanAddresses(): string[] {
-  return Object.values(networkInterfaces())
-    .flat()
-    .filter((net): net is NonNullable<typeof net> => !!net && net.family === 'IPv4' && !net.internal)
-    .map(net => net.address);
-}
 
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
@@ -615,9 +609,7 @@ server.listen(PORT, () => {
   if (servesFrontend) {
     console.log(`\n🎵 Play at http://localhost:${PORT}`);
     lanAddresses().forEach(ip => {
-      // 100.64.0.0/10 is used by VPNs like Tailscale, not the local Wi-Fi
-      const [a, b] = ip.split('.').map(Number);
-      const label = a === 100 && b >= 64 && b <= 127 ? 'Friends on your VPN (e.g. Tailscale)' : 'Friends on the same Wi-Fi';
+      const label = isVpnAddress(ip) ? 'Friends on your VPN (e.g. Tailscale)' : 'Friends on the same Wi-Fi';
       console.log(`   ${label}: http://${ip}:${PORT}`);
     });
     console.log('');

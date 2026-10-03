@@ -6,7 +6,7 @@ const MODE_LABELS = { artist: 'Artist', title: 'Title', mix: 'Mix' };
 
 const CHALLENGE_HEADLINES = { win: 'You win!', lose: 'So close', tie: "It's a tie" };
 
-function GameOver({ finalScore, results, soloSummary, challengeSummary, canChallenge, matchRounds, genres = [], isGuest, onRestart }) {
+function GameOver({ finalScore, results, soloSummary, challengeSummary, canChallenge, shareOrigin, matchRounds, genres = [], isGuest, onRestart }) {
   const genreName = soloSummary ? ((genres.find((g) => g.id === soloSummary.genreId) || {}).name || '') : '';
   const modeLabel = soloSummary ? MODE_LABELS[soloSummary.questionMode] : '';
 
@@ -55,7 +55,7 @@ function GameOver({ finalScore, results, soloSummary, challengeSummary, canChall
           </div>
         )}
 
-        {soloSummary?.gameId && canChallenge && <ChallengeShare gameId={soloSummary.gameId} />}
+        {soloSummary?.gameId && canChallenge && <ChallengeShare gameId={soloSummary.gameId} shareOrigin={shareOrigin} />}
 
         {results && !soloSummary && !challengeSummary && (
           <div className="results-section">

@@ -39,6 +39,7 @@ The backend creates its tables on first start. Settings live in `backend/.env`:
 
 - `DATABASE_URL`: Postgres connection (default `postgres://localhost/tuneduel`)
 - `GOOGLE_CLIENT_ID`: enables Google sign-in (see below). Without it, a local-only dev sign-in is shown instead
+- `PUBLIC_URL`: base for invite and challenge links once deployed. When empty and you're on `localhost`, links use this computer's Wi-Fi address (e.g. `http://10.0.0.241:3001`) so friends' phones can open them
 
 ### Google sign-in
 

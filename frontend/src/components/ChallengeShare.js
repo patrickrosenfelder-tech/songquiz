@@ -3,7 +3,7 @@ import { api } from '../api';
 import './Social.css';
 
 // After a solo game: share a link, or send the challenge to friends or any player by name
-function ChallengeShare({ gameId }) {
+function ChallengeShare({ gameId, shareOrigin }) {
   const [link, setLink] = useState(null);
   const [copied, setCopied] = useState(false);
   const [friends, setFriends] = useState([]);
@@ -33,7 +33,7 @@ function ChallengeShare({ gameId }) {
     try {
       setError(null);
       const { code } = await api('/challenges', { method: 'POST', body: { gameId } });
-      const url = `${window.location.origin}/?challenge=${code}`;
+      const url = `${shareOrigin || window.location.origin}/?challenge=${code}`;
       setLink(url);
       try {
         await navigator.clipboard.writeText(url);
