@@ -5,6 +5,7 @@ import GameLobby from './components/GameLobby';
 import SignIn from './components/SignIn';
 import DisplayNameSetup from './components/DisplayNameSetup';
 import Leaderboard from './components/Leaderboard';
+import RoundPick from './components/RoundPick';
 import GameScreen from './components/GameScreen';
 import GameOver from './components/GameOver';
 
@@ -112,11 +113,34 @@ function App() {
         }));
         break;
 
+      case 'pick-started':
+        setGameData((prev) => ({
+          ...prev,
+          matchRound: message.matchRound,
+          matchRounds: message.matchRounds,
+          pick: { ...message, receivedAt: Date.now() },
+          roundPick: null,
+          standings: message.standings
+        }));
+        setGameState('picking');
+        break;
+
+      case 'round-picked':
+        setGameData((prev) => ({
+          ...prev,
+          matchRound: message.matchRound,
+          matchRounds: message.matchRounds,
+          roundPick: message
+        }));
+        break;
+
       case 'round-started':
         setGameData((prev) => ({
           ...prev,
           currentRound: message.round,
           totalRounds: message.totalRounds || prev.totalRounds,
+          matchRound: message.matchRound,
+          matchRounds: message.matchRounds,
           currentSong: message.song,
           answerResult: null,
           roundResult: null
@@ -145,6 +169,7 @@ function App() {
               artist: message.artist,
               title: message.title,
               isLastRound: message.isLastRound,
+              isLastMatchRound: message.isLastMatchRound,
               nextIn: message.nextIn
             }
           };
@@ -156,6 +181,7 @@ function App() {
         setGameData((prev) => ({
           ...prev,
           finalResults: message.results,
+          matchRounds: message.matchRounds,
           soloSummary: message.solo
         }));
         break;
@@ -193,6 +219,12 @@ function App() {
   const updateSettings = (settings) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'update-settings', ...settings }));
+    }
+  };
+
+  const pickRound = (choice) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'pick-round', ...choice }));
     }
   };
 
@@ -247,11 +279,23 @@ function App() {
         />
       )}
 
+      {gameState === 'picking' && gameData.pick && (
+        <RoundPick
+          pick={gameData.pick}
+          roundPick={gameData.roundPick}
+          clientId={gameData.clientId}
+          genres={gameData.genres}
+          onPick={pickRound}
+        />
+      )}
+
       {gameState === 'playing' && gameData.currentSong && (
         <GameScreen
           song={gameData.currentSong}
           round={gameData.currentRound}
           totalRounds={gameData.totalRounds}
+          matchRound={gameData.matchRound}
+          matchRounds={gameData.matchRounds}
           score={gameData.score}
           answerResult={gameData.answerResult}
           roundResult={gameData.roundResult}
@@ -264,6 +308,7 @@ function App() {
           finalScore={gameData.score}
           results={gameData.finalResults}
           soloSummary={gameData.soloSummary}
+          matchRounds={gameData.matchRounds}
           genres={gameData.genres}
           isGuest={!user}
           onRestart={() => {

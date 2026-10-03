@@ -1,5 +1,5 @@
 import { AudioService, GENRES, QuestionType, Song, Track } from '../services/audioService';
-import { SavedGame } from '../database/database';
+import { SavedGame, SavedMatch } from '../database/database';
 
 export interface GameRound {
   roundNumber: number;
@@ -24,7 +24,11 @@ export type GameMode = 'artist' | 'title' | 'mix';
 export interface GameSettings {
   genreId: number;
   mode: GameMode;
+  // Multiplayer only: how many 7-song rounds the match has
+  roundCount: number;
 }
+
+export const MAX_MATCH_ROUNDS = 5;
 
 export interface Game {
   id: string;
@@ -32,14 +36,23 @@ export interface Game {
   hostClientId: string;
   settings: GameSettings;
   players: Player[];
+  // Songs of the current match round ("round" in the UI = 7 songs; GameRound = one song)
   rounds: GameRound[];
   currentRound: number;
   totalRounds: number;
-  status: 'waiting' | 'playing' | 'finished';
+  status: 'waiting' | 'picking' | 'playing' | 'finished';
   currentSong?: Song;
   songPool: Track[];
   nextTrackIndex: number;
   startedAt?: Date;
+  matchRound: number;
+  matchRounds: number;
+  matchStartedAt?: Date;
+  // Join order at match start; players take turns picking genre and mode
+  pickerOrder: string[];
+  pickerClientId?: string;
+  completedRounds: SavedGame[];
+  roundStartScores: Map<string, number>;
 }
 
 export class GameManager {
@@ -70,14 +83,19 @@ export class GameManager {
         id: gameId,
         kind,
         hostClientId: clientId,
-        settings: { genreId: 0, mode: 'artist' },
+        settings: { genreId: 0, mode: 'artist', roundCount: 3 },
         players: [],
         rounds: [],
         currentRound: 0,
         totalRounds: this.TOTAL_ROUNDS,
         status: 'waiting',
         songPool: [],
-        nextTrackIndex: 0
+        nextTrackIndex: 0,
+        matchRound: 0,
+        matchRounds: 1,
+        pickerOrder: [],
+        completedRounds: [],
+        roundStartScores: new Map()
       };
       this.games.set(gameId, game);
     }
@@ -119,7 +137,72 @@ export class GameManager {
     if (settings.mode && ['artist', 'title', 'mix'].includes(settings.mode)) {
       game.settings.mode = settings.mode;
     }
+    if (settings.roundCount !== undefined && Number.isInteger(settings.roundCount)
+      && settings.roundCount >= 1 && settings.roundCount <= MAX_MATCH_ROUNDS) {
+      game.settings.roundCount = settings.roundCount;
+    }
     return true;
+  }
+
+  startMatch(gameId: string): void {
+    const game = this.games.get(gameId);
+    if (!game) throw new Error('Game not found');
+    game.pickerOrder = game.players.map(p => p.clientId);
+    game.matchRounds = game.kind === 'solo' ? 1 : game.settings.roundCount;
+    game.matchRound = 0;
+    game.matchStartedAt = new Date();
+    game.completedRounds = [];
+  }
+
+  // Moves to the next match round and returns who picks its genre and mode
+  beginPick(gameId: string): Player | null {
+    const game = this.games.get(gameId);
+    if (!game) return null;
+    game.matchRound++;
+    game.status = 'picking';
+    game.players.forEach(p => { p.ready = false; });
+    return this.assignPicker(game);
+  }
+
+  // If the picker left, the next player in the rotation takes over
+  reassignPickerIfGone(gameId: string): Player | null {
+    const game = this.games.get(gameId);
+    if (!game || game.status !== 'picking') return null;
+    if (game.players.some(p => p.clientId === game.pickerClientId)) return null;
+    return this.assignPicker(game);
+  }
+
+  private assignPicker(game: Game): Player | null {
+    const present = game.pickerOrder
+      .map(id => game.players.find(p => p.clientId === id))
+      .filter((p): p is Player => !!p);
+    // Players who joined after the match started (none today) fall back to join order
+    const order = present.length > 0 ? present : game.players;
+    if (order.length === 0) return null;
+    const picker = order[(game.matchRound - 1) % order.length];
+    game.pickerClientId = picker.clientId;
+    return picker;
+  }
+
+  // Only the current picker can choose, once, while picking
+  chooseRound(gameId: string, clientId: string | null, choice: { genreId?: number; mode?: string }): boolean {
+    const game = this.games.get(gameId);
+    if (!game || game.status !== 'picking') return false;
+    if (clientId !== null && clientId !== game.pickerClientId) return false;
+
+    const genreId = GENRES.some(g => g.id === choice.genreId) ? choice.genreId! : game.settings.genreId;
+    const mode = ['artist', 'title', 'mix'].includes(choice.mode || '') ? choice.mode as GameMode : game.settings.mode;
+    game.settings.genreId = genreId;
+    game.settings.mode = mode;
+    game.status = 'playing';
+    return true;
+  }
+
+  // Used when the picker doesn't choose in time
+  autoChooseRound(gameId: string): boolean {
+    const genre = GENRES[Math.floor(Math.random() * GENRES.length)];
+    const modes: GameMode[] = ['artist', 'title', 'mix'];
+    return this.chooseRound(gameId, null, { genreId: genre.id, mode: modes[Math.floor(Math.random() * modes.length)] });
   }
 
   async prepareGame(gameId: string): Promise<void> {
@@ -128,6 +211,9 @@ export class GameManager {
     game.songPool = await this.audioService.getSongPool(game.settings.genreId);
     game.startedAt = new Date();
     game.nextTrackIndex = 0;
+    game.rounds = [];
+    game.currentRound = 0;
+    game.roundStartScores = new Map(game.players.map(p => [p.clientId, p.score]));
     game.totalRounds = Math.min(this.TOTAL_ROUNDS, game.songPool.length);
   }
 
@@ -143,29 +229,24 @@ export class GameManager {
     return game.players.every(p => p.ready);
   }
 
-  async startNextRound(gameId: string): Promise<Game> {
+  // Starts the next song of the current match round; null when the round has no more songs
+  async startNextRound(gameId: string): Promise<Game | null> {
     const game = this.games.get(gameId);
     if (!game) throw new Error('Game not found');
 
     if (game.currentRound >= game.totalRounds) {
-      game.status = 'finished';
-      return game;
+      return null;
     }
 
     game.currentRound++;
     game.status = 'playing';
 
-    game.players.forEach(p => {
-      p.ready = false;
-    });
-
     const song = await this.nextPlayableSong(game);
     if (!song) {
-      // Ran out of songs with audio; end the game after the rounds played so far
+      // Ran out of songs with audio; end this round after the songs played so far
       game.currentRound--;
       game.totalRounds = game.currentRound;
-      game.status = 'finished';
-      return game;
+      return null;
     }
     game.currentSong = song;
 
@@ -252,6 +333,18 @@ export class GameManager {
     return !!game && game.currentRound >= game.totalRounds;
   }
 
+  isLastMatchRound(gameId: string): boolean {
+    const game = this.games.get(gameId);
+    return !!game && game.matchRound >= game.matchRounds;
+  }
+
+  // Stores the finished match round for saving at the end of the match
+  completeMatchRound(gameId: string): void {
+    const saved = this.toSavedGame(gameId);
+    const game = this.games.get(gameId);
+    if (game && saved) game.completedRounds.push(saved);
+  }
+
   finishGame(gameId: string): Array<{ player: string; score: number }> {
     const game = this.games.get(gameId);
     if (!game) return [];
@@ -261,12 +354,13 @@ export class GameManager {
       .map(p => ({ player: p.userId, score: p.score }));
   }
 
-  // Snapshot of a finished game in the shape the database stores
+  // Snapshot of the current match round in the shape the database stores; scores are this round's only
   toSavedGame(gameId: string): SavedGame | null {
     const game = this.games.get(gameId);
     if (!game || game.rounds.length === 0) return null;
 
-    const players = [...game.players].sort((a, b) => b.score - a.score);
+    const roundScore = (p: Player) => p.score - (game.roundStartScores.get(p.clientId) ?? 0);
+    const players = [...game.players].sort((a, b) => roundScore(b) - roundScore(a));
     const indexByClient = new Map(players.map((p, i) => [p.clientId, i]));
 
     return {
@@ -275,11 +369,12 @@ export class GameManager {
       genreId: game.settings.genreId,
       questionMode: game.settings.mode,
       startedAt: game.startedAt || new Date(),
+      matchRound: game.matchRound,
       players: players.map(p => ({
         userId: p.accountId,
         name: p.userId,
         isGuest: p.isGuest,
-        score: p.score,
+        score: roundScore(p),
         correctCount: game.rounds.filter(r => r.answers.get(p.clientId)?.correct).length
       })),
       songs: game.rounds.map(r => ({
@@ -301,6 +396,20 @@ export class GameManager {
             timeMs: a.timeSpent
           }))
       }))
+    };
+  }
+
+  toSavedMatch(gameId: string): SavedMatch | null {
+    const game = this.games.get(gameId);
+    if (!game || game.completedRounds.length === 0) return null;
+    return {
+      code: game.id,
+      roundCount: game.completedRounds.length,
+      startedAt: game.matchStartedAt || new Date(),
+      players: [...game.players]
+        .sort((a, b) => b.score - a.score)
+        .map(p => ({ userId: p.accountId, name: p.userId, isGuest: p.isGuest, totalScore: p.score })),
+      rounds: game.completedRounds
     };
   }
 

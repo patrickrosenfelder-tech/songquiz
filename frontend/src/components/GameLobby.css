@@ -248,3 +248,9 @@
   font-size: 0.85em;
   color: var(--ink-soft);
 }
+
+.round-buttons {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}

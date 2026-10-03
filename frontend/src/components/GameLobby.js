@@ -69,8 +69,42 @@ function GameLobby({
     onStart();
   };
 
+  // Multiplayer: host sets the number of rounds; players pick genre and mode per round
+  const renderMatchSettings = () => {
+    const roundCount = settings.roundCount || 3;
+    const summary = `${roundCount} round${roundCount === 1 ? '' : 's'} · 7 songs each`;
+    return (
+      <div className="settings-section">
+        {isHost ? (
+          <>
+            <span className="settings-label">Rounds</span>
+            <div className="round-buttons">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  className={`mode-button ${roundCount === n ? 'active' : ''}`}
+                  onClick={() => onSettingsChange({ roundCount: n })}
+                  disabled={isReady}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <p className="settings-hint">{summary}. Players take turns picking the genre and mode.</p>
+          </>
+        ) : (
+          <>
+            <p className="settings-summary"><strong>{summary}</strong></p>
+            <p className="settings-hint">Players take turns picking the genre and mode. The host sets the number of rounds.</p>
+          </>
+        )}
+      </div>
+    );
+  };
+
   const renderSettings = () => {
     if (!settings) return null;
+    if (!isSolo) return renderMatchSettings();
 
     if (!isHost) {
       return (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './GameScreen.css';
 
-function GameScreen({ song, round, totalRounds, score, answerResult, roundResult, onAnswerSubmit }) {
+function GameScreen({ song, round, totalRounds, matchRound, matchRounds, score, answerResult, roundResult, onAnswerSubmit }) {
   const [timeLeft, setTimeLeft] = useState(30);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [submitted, setSubmitted] = useState(false);
@@ -95,7 +95,9 @@ function GameScreen({ song, round, totalRounds, score, answerResult, roundResult
           <strong>{roundResult.title}</strong> by {roundResult.artist}
         </p>
         <p className="next-in">
-          {roundResult.isLastRound ? 'Final results' : 'Next track'} in {nextIn ?? 0}s
+          {roundResult.isLastRound
+            ? (roundResult.isLastMatchRound ? 'Final results' : 'Next round')
+            : 'Next track'} in {nextIn ?? 0}s
         </p>
       </div>
     );
@@ -109,7 +111,10 @@ function GameScreen({ song, round, totalRounds, score, answerResult, roundResult
     <div className="game-screen">
       <div className="card game-card">
         <div className="game-header">
-          <span>Track {round} of {totalRounds}</span>
+          <span>
+            {matchRounds > 1 && <>Round {matchRound}/{matchRounds} · </>}
+            Track {round} of {totalRounds}
+          </span>
           <span className="game-score">{score.toLocaleString()} pts</span>
         </div>
 

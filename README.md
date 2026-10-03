@@ -101,16 +101,17 @@ Starts the backend (port 8080, restarts on code changes) and the React dev serve
 - After a solo game you see whether it's a personal best and your rank in that genre and overall
 - Multiplayer and guest games are saved but don't count toward leaderboards
 
-## How to Play
+## Multiplayer Matches
 
-1. **Create**: Sign in with Google and click "Create game". You're the host 👑
-2. **Invite**: Share the game code or invite link shown in the lobby
-3. **Choose**: The host picks a genre and whether to guess the artist, the title, or a mix
-4. **Start**: The game starts when every player clicks "Ready to Play!"
-5. **Listen & answer**: Each round plays a 30-second preview; pick the right answer from 4 options
-6. **Score**: Faster correct answers earn more points (up to 1000)
-7. **Reveal**: The round ends when everyone answered or time runs out; the next song starts 5 seconds later
-8. **Results**: After 7 songs, view the final rankings
+1. **Create**: Sign in and click "Play with friends". You're the host 👑
+2. **Invite**: Share the game code or invite link. Friends can join as guests
+3. **Rounds**: The host picks how many rounds (1–5). Each round is 7 songs
+4. **Pick**: Before each round, the next player (in join order) picks the genre and Artist / Title / Mix. If they don't pick within 30 seconds, it's picked at random. If the picker leaves, the next player takes over
+5. **Play**: Each song plays for up to 30 seconds; faster correct answers earn more points (up to 1000). A song ends when everyone has answered or time runs out, and the next starts 5 seconds later
+6. **Standings**: Shown between rounds while the next player picks
+7. **Winner**: Most total points across all rounds
+
+Matches are saved with each round's songs, answers and scores, but don't count toward the solo leaderboards.
 
 Songs come from Deezer's genre charts, with iTunes as a fallback for audio and a built-in song list if Deezer is unreachable.
 
@@ -120,7 +121,8 @@ Songs come from Deezer's genre charts, with iTunes as a fallback for audio and a
 
 **Client to Server:**
 - `join`: Join a game by code (`gameId`), or create one when no code is given (`solo: true` for a private solo game)
-- `update-settings`: Host changes the genre (`genreId`) or mode (`artist`/`title`/`mix`)
+- `update-settings`: Host changes the genre (`genreId`) or mode (`artist`/`title`/`mix`) for solo, or `roundCount` for multiplayer
+- `pick-round`: The current picker chooses the round's `genreId` and `mode`
 - `ready`: Player is ready; the game starts when everyone is
 - `answer`: Submit an answer
 
@@ -128,7 +130,9 @@ Songs come from Deezer's genre charts, with iTunes as a fallback for audio and a
 - `game-joined`: Join confirmation with game code, genres and lobby state
 - `lobby-updated`: Players, host and settings changed
 - `error`: Join failed (unknown code, game started, name taken)
-- `round-started`: New round with audio, question type and options
+- `pick-started`: A match round is about to start; who picks, current standings, time limit
+- `round-picked`: The genre and mode chosen for the round
+- `round-started`: New song with audio, question type, options, and match round
 - `answer-recorded`: Your answer's result (sent only to you)
 - `round-ended`: Correct answer and scores; next round follows after 5s
 - `game-finished`: Final results, plus personal best and ranks for solo games
@@ -156,6 +160,7 @@ Postgres, with migrations in `backend/src/database/migrations.ts` applied at sta
 - **game_players**: final ranking per game; `user_id` is empty for guests
 - **game_songs**: the songs played, with the answer options shown
 - **answers**: every answer with points and answer time
+- **matches** / **match_players**: multiplayer matches and final totals; each round is a `games` row with `match_id` and `match_round`
 
 ## Running Tests
 

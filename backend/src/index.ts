@@ -45,6 +45,8 @@ const ROUND_GRACE_PERIOD = 1500;
 const roundTimers: Map<string, NodeJS.Timeout> = new Map();
 // Games loading their song pool, so a second ready message can't start them twice
 const startingGames: Set<string> = new Set();
+// How long a player has to pick the next round's genre and mode before a random pick
+const PICK_TIMEOUT = 30000;
 
 function setRoundTimer(gameId: string, fn: () => void, delay: number) {
   clearRoundTimer(gameId);
@@ -87,6 +89,9 @@ wss.on('connection', (ws, req) => {
         clearRoundTimer(client.gameId);
       } else if (game.status === 'waiting') {
         broadcastLobby(client.gameId);
+      } else if (game.status === 'picking') {
+        // The picker left: hand the pick to the next player
+        if (gameManager.reassignPickerIfGone(client.gameId)) announcePick(client.gameId);
       } else if (game.status === 'playing' && gameManager.allPlayersAnswered(client.gameId)) {
         // The player who left may have been the last one we were waiting for
         endRound(client.gameId);
@@ -112,6 +117,9 @@ function handleWebSocketMessage(clientId: string, message: any, ws: any, cookieH
       break;
     case 'update-settings':
       handleUpdateSettings(clientId, message);
+      break;
+    case 'pick-round':
+      handlePickRound(clientId, message);
       break;
     case 'ready':
       handlePlayerReady(clientId, message).catch(err => console.error('Failed to start round:', err));
@@ -203,9 +211,10 @@ function handleUpdateSettings(clientId: string, message: any) {
   const client = clients.get(clientId);
   if (!client) return;
 
-  const settings: { genreId?: number; mode?: any } = {};
+  const settings: { genreId?: number; mode?: any; roundCount?: number } = {};
   if (message.genreId !== undefined) settings.genreId = Number(message.genreId);
   if (message.mode !== undefined) settings.mode = message.mode;
+  if (message.roundCount !== undefined) settings.roundCount = Number(message.roundCount);
 
   if (gameManager.updateSettings(client.gameId, clientId, settings)) {
     broadcastLobby(client.gameId);
@@ -253,20 +262,87 @@ async function handlePlayerReady(clientId: string, message: any) {
   broadcastLobby(client.gameId);
 
   if (allReady) {
-    startingGames.add(client.gameId);
-    try {
-      await gameManager.prepareGame(client.gameId);
-      await startRound(client.gameId);
-    } finally {
-      startingGames.delete(client.gameId);
+    gameManager.startMatch(client.gameId);
+    if (game.kind === 'solo') {
+      // Solo players chose genre and mode in the lobby
+      gameManager.beginPick(client.gameId);
+      gameManager.chooseRound(client.gameId, clientId, game.settings);
+      await launchRound(client.gameId);
+    } else {
+      startPick(client.gameId);
     }
+  }
+}
+
+// Before each match round, the next player in the rotation picks genre and mode
+function startPick(gameId: string) {
+  const picker = gameManager.beginPick(gameId);
+  if (!picker) return;
+  announcePick(gameId);
+}
+
+function announcePick(gameId: string) {
+  const game = gameManager.getGameState(gameId);
+  const picker = game?.players.find(p => p.clientId === game.pickerClientId);
+  if (!game || !picker) return;
+
+  broadcastToGame(gameId, {
+    type: 'pick-started',
+    matchRound: game.matchRound,
+    matchRounds: game.matchRounds,
+    pickerClientId: picker.clientId,
+    pickerName: picker.userId,
+    settings: { genreId: game.settings.genreId, mode: game.settings.mode },
+    standings: [...game.players].sort((a, b) => b.score - a.score).map(publicPlayer),
+    timeLimit: PICK_TIMEOUT / 1000
+  });
+
+  setRoundTimer(gameId, () => {
+    if (gameManager.autoChooseRound(gameId)) {
+      launchRound(gameId).catch(err => console.error('Failed to start round:', err));
+    }
+  }, PICK_TIMEOUT);
+}
+
+function handlePickRound(clientId: string, message: any) {
+  const client = clients.get(clientId);
+  if (!client) return;
+  const choice = { genreId: Number(message.genreId), mode: String(message.mode) };
+  if (gameManager.chooseRound(client.gameId, clientId, choice)) {
+    launchRound(client.gameId).catch(err => console.error('Failed to start round:', err));
+  }
+}
+
+// Loads the chosen genre's songs and starts the round's first song
+async function launchRound(gameId: string) {
+  if (startingGames.has(gameId)) return;
+  clearRoundTimer(gameId);
+  const game = gameManager.getGameState(gameId);
+  if (!game) return;
+
+  const picker = game.players.find(p => p.clientId === game.pickerClientId);
+  broadcastToGame(gameId, {
+    type: 'round-picked',
+    matchRound: game.matchRound,
+    matchRounds: game.matchRounds,
+    genreId: game.settings.genreId,
+    mode: game.settings.mode,
+    pickerName: game.kind === 'solo' ? null : picker?.userId ?? null
+  });
+
+  startingGames.add(gameId);
+  try {
+    await gameManager.prepareGame(gameId);
+    await startRound(gameId);
+  } finally {
+    startingGames.delete(gameId);
   }
 }
 
 async function startRound(gameId: string) {
   const game = await gameManager.startNextRound(gameId);
-  if (game.status === 'finished') {
-    await finishGame(gameId);
+  if (!game) {
+    await endMatchRound(gameId);
     return;
   }
 
@@ -274,6 +350,8 @@ async function startRound(gameId: string) {
     type: 'round-started',
     round: game.currentRound,
     totalRounds: game.totalRounds,
+    matchRound: game.matchRound,
+    matchRounds: game.matchRounds,
     song: {
       audioUrl: game.currentSong?.audioUrl,
       questionType: game.currentSong?.questionType,
@@ -291,6 +369,7 @@ function endRound(gameId: string) {
   if (!game || !round) return;
 
   const isLastRound = gameManager.isLastRound(gameId);
+  const isLastMatchRound = gameManager.isLastMatchRound(gameId);
 
   broadcastToGame(gameId, {
     type: 'round-ended',
@@ -300,54 +379,68 @@ function endRound(gameId: string) {
     title: round.song.title,
     scores: game.players.map(publicPlayer),
     isLastRound,
+    isLastMatchRound,
     nextIn: NEXT_ROUND_DELAY / 1000
   });
 
   setRoundTimer(gameId, () => {
-    if (isLastRound) {
-      finishGame(gameId).catch(err => console.error('Failed to finish game:', err));
-    } else {
-      startRound(gameId).catch(err => console.error('Failed to start round:', err));
-    }
+    const next = isLastRound ? endMatchRound(gameId) : startRound(gameId);
+    next.catch(err => console.error('Failed to continue game:', err));
   }, NEXT_ROUND_DELAY);
+}
+
+async function endMatchRound(gameId: string) {
+  gameManager.completeMatchRound(gameId);
+  if (gameManager.isLastMatchRound(gameId)) {
+    await finishGame(gameId);
+  } else {
+    startPick(gameId);
+  }
 }
 
 async function finishGame(gameId: string) {
   clearRoundTimer(gameId);
   const game = gameManager.getGameState(gameId);
-  const saved = gameManager.toSavedGame(gameId);
+  if (!game) return;
   const results = gameManager.finishGame(gameId);
 
   // Solo players see whether they set a personal best and where they rank
   let soloSummary = null;
-  const soloAccount = game?.kind === 'solo' ? game.players[0]?.accountId : null;
-  if (saved && soloAccount) {
-    try {
-      const { genreId, questionMode } = saved;
-      const previousBest = await db.getBestSoloScore(soloAccount, questionMode, genreId);
-      await db.saveGame(saved);
-      const [genreBoard, overallBoard] = await Promise.all([
-        db.getLeaderboard(questionMode, genreId, soloAccount, 0),
-        db.getLeaderboard(questionMode, null, soloAccount, 0)
-      ]);
-      soloSummary = {
-        genreId,
-        questionMode,
-        previousBest,
-        personalBest: previousBest === null || saved.players[0].score > previousBest,
-        genreRank: genreBoard.me?.rank ?? null,
-        overallRank: overallBoard.me?.rank ?? null
-      };
-    } catch (err) {
-      console.error('Failed to save solo game:', err);
+  if (game.kind === 'solo') {
+    const saved = game.completedRounds[0];
+    const soloAccount = game.players[0]?.accountId;
+    if (saved && soloAccount) {
+      try {
+        const { genreId, questionMode } = saved;
+        const previousBest = await db.getBestSoloScore(soloAccount, questionMode, genreId);
+        await db.saveGame(saved);
+        const [genreBoard, overallBoard] = await Promise.all([
+          db.getLeaderboard(questionMode, genreId, soloAccount, 0),
+          db.getLeaderboard(questionMode, null, soloAccount, 0)
+        ]);
+        soloSummary = {
+          genreId,
+          questionMode,
+          previousBest,
+          personalBest: previousBest === null || saved.players[0].score > previousBest,
+          genreRank: genreBoard.me?.rank ?? null,
+          overallRank: overallBoard.me?.rank ?? null
+        };
+      } catch (err) {
+        console.error('Failed to save solo game:', err);
+      }
     }
-  } else if (saved) {
-    db.saveGame(saved).catch(err => console.error('Failed to save game:', err));
+  } else {
+    const match = gameManager.toSavedMatch(gameId);
+    if (match) {
+      db.saveMatch(match).catch(err => console.error('Failed to save match:', err));
+    }
   }
 
   broadcastToGame(gameId, {
     type: 'game-finished',
     results,
+    matchRounds: game.matchRounds,
     solo: soloSummary
   });
 }

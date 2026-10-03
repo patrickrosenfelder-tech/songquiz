@@ -3,16 +3,20 @@ import './GameOver.css';
 
 const MODE_LABELS = { artist: 'Artist', title: 'Title', mix: 'Mix' };
 
-function GameOver({ finalScore, results, soloSummary, genres = [], isGuest, onRestart }) {
+function GameOver({ finalScore, results, soloSummary, matchRounds, genres = [], isGuest, onRestart }) {
   const genreName = soloSummary ? ((genres.find((g) => g.id === soloSummary.genreId) || {}).name || '') : '';
   const modeLabel = soloSummary ? MODE_LABELS[soloSummary.questionMode] : '';
 
   return (
     <div className="gameover-container">
       <div className="card gameover-box">
-        <h2>{soloSummary?.personalBest ? 'New personal best!' : "That's a wrap"}</h2>
+        <h2>
+          {soloSummary
+            ? (soloSummary.personalBest ? 'New personal best!' : "That's a wrap")
+            : results && results.length > 1 ? `${results[0].player} wins!` : "That's a wrap"}
+        </h2>
         <div className="final-score">
-          <span className="score-label">Your score</span>
+          <span className="score-label">{matchRounds > 1 ? `Your total · ${matchRounds} rounds` : 'Your score'}</span>
           <span className="score-value">{finalScore.toLocaleString()}</span>
           {soloSummary && soloSummary.previousBest !== null && !soloSummary.personalBest && (
             <span className="score-sub">Your best: {soloSummary.previousBest.toLocaleString()}</span>

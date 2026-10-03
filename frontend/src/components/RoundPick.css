@@ -1,0 +1,70 @@
+.pick-round-label {
+  margin: 0 0 4px;
+  font-size: 0.85em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--coral);
+}
+
+.pick-start {
+  margin-top: 8px;
+}
+
+.pick-timer {
+  margin: 16px 0 0;
+  text-align: center;
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.standings {
+  margin-top: 24px;
+}
+
+.standings-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.standings-row {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  background: var(--cream);
+  border-radius: 999px;
+}
+
+.standings-row.is-me {
+  background: var(--coral);
+  color: white;
+}
+
+.standings-rank {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--coral);
+}
+
+.standings-row.is-me .standings-rank {
+  color: white;
+}
+
+.standings-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.standings-score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}

@@ -15,6 +15,8 @@ export interface SavedGame {
   genreId: number;
   questionMode: string;
   startedAt: Date;
+  // Which round of its match this is (multiplayer)
+  matchRound?: number;
   players: Array<{
     userId: string | null;
     name: string;
@@ -33,6 +35,15 @@ export interface SavedGame {
     // playerIndex points into players
     answers: Array<{ playerIndex: number; answer: string; correct: boolean; points: number; timeMs: number }>;
   }>;
+}
+
+export interface SavedMatch {
+  code: string;
+  roundCount: number;
+  startedAt: Date;
+  // Ordered by total score; position 0 is the winner
+  players: Array<{ userId: string | null; name: string; isGuest: boolean; totalScore: number }>;
+  rounds: SavedGame[];
 }
 
 export interface LeaderboardEntry {
@@ -148,42 +159,71 @@ export class DatabaseService {
   async saveGame(game: SavedGame): Promise<string> {
     const client = await this.pool.connect();
     try {
+      return await this.inTransaction(client, () => this.insertGame(client, game, null));
+    } finally {
+      client.release();
+    }
+  }
+
+  // A multiplayer match and each of its rounds, all or nothing
+  async saveMatch(match: SavedMatch): Promise<string> {
+    const client = await this.pool.connect();
+    try {
       return await this.inTransaction(client, async () => {
         const { rows } = await client.query(
-          `INSERT INTO games (code, kind, genre_id, question_mode, song_count, started_at)
-           VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-          [game.code, game.kind, game.genreId, game.questionMode, game.songs.length, game.startedAt]
+          'INSERT INTO matches (code, round_count, started_at) VALUES ($1, $2, $3) RETURNING id',
+          [match.code, match.roundCount, match.startedAt]
         );
-        const gameId = rows[0].id;
-
-        for (const [position, p] of game.players.entries()) {
+        const matchId = rows[0].id;
+        for (const [position, p] of match.players.entries()) {
           await client.query(
-            `INSERT INTO game_players (game_id, position, user_id, name, is_guest, score, correct_count)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [gameId, position, p.userId, p.name, p.isGuest, p.score, p.correctCount]
+            `INSERT INTO match_players (match_id, position, user_id, name, is_guest, total_score)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [matchId, position, p.userId, p.name, p.isGuest, p.totalScore]
           );
         }
-
-        for (const [index, s] of game.songs.entries()) {
-          const songNumber = index + 1;
-          await client.query(
-            `INSERT INTO game_songs (game_id, song_number, track_id, deezer_id, title, artist, question_type, correct_answer, options)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-            [gameId, songNumber, s.trackId, s.deezerId || null, s.title, s.artist, s.questionType, s.correctAnswer, JSON.stringify(s.options)]
-          );
-          for (const a of s.answers) {
-            await client.query(
-              `INSERT INTO answers (game_id, song_number, player_position, answer, correct, points, time_ms)
-               VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-              [gameId, songNumber, a.playerIndex, a.answer, a.correct, a.points, a.timeMs]
-            );
-          }
+        for (const round of match.rounds) {
+          await this.insertGame(client, round, matchId);
         }
-        return gameId;
+        return matchId;
       });
     } finally {
       client.release();
     }
+  }
+
+  private async insertGame(client: PoolClient, game: SavedGame, matchId: string | null): Promise<string> {
+    const { rows } = await client.query(
+      `INSERT INTO games (code, kind, genre_id, question_mode, song_count, started_at, match_id, match_round)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [game.code, game.kind, game.genreId, game.questionMode, game.songs.length, game.startedAt, matchId, game.matchRound ?? null]
+    );
+    const gameId = rows[0].id;
+
+    for (const [position, p] of game.players.entries()) {
+      await client.query(
+        `INSERT INTO game_players (game_id, position, user_id, name, is_guest, score, correct_count)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [gameId, position, p.userId, p.name, p.isGuest, p.score, p.correctCount]
+      );
+    }
+
+    for (const [index, s] of game.songs.entries()) {
+      const songNumber = index + 1;
+      await client.query(
+        `INSERT INTO game_songs (game_id, song_number, track_id, deezer_id, title, artist, question_type, correct_answer, options)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [gameId, songNumber, s.trackId, s.deezerId || null, s.title, s.artist, s.questionType, s.correctAnswer, JSON.stringify(s.options)]
+      );
+      for (const a of s.answers) {
+        await client.query(
+          `INSERT INTO answers (game_id, song_number, player_position, answer, correct, points, time_ms)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [gameId, songNumber, a.playerIndex, a.answer, a.correct, a.points, a.timeMs]
+        );
+      }
+    }
+    return gameId;
   }
 
   // Each player's best solo game (earliest wins ties), ranked. genreId null = all genres.

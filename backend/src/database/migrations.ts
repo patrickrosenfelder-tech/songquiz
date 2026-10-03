@@ -78,5 +78,33 @@ export const MIGRATIONS: { id: number; name: string; sql: string }[] = [
     sql: `
       CREATE INDEX games_solo_board ON games (question_mode, genre_id) WHERE kind = 'solo';
     `
+  },
+  {
+    id: 3,
+    name: 'matches',
+    sql: `
+      CREATE TABLE matches (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        code text NOT NULL,
+        round_count integer NOT NULL,
+        started_at timestamptz NOT NULL,
+        finished_at timestamptz NOT NULL DEFAULT now()
+      );
+
+      CREATE TABLE match_players (
+        match_id uuid NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+        position integer NOT NULL,
+        user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+        name text NOT NULL,
+        is_guest boolean NOT NULL,
+        total_score integer NOT NULL,
+        PRIMARY KEY (match_id, position)
+      );
+      CREATE INDEX match_players_user_id ON match_players (user_id);
+
+      ALTER TABLE games
+        ADD COLUMN match_id uuid REFERENCES matches(id) ON DELETE CASCADE,
+        ADD COLUMN match_round integer;
+    `
   }
 ];
