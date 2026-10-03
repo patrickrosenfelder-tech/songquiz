@@ -11,7 +11,7 @@ export interface User {
 
 export interface SavedGame {
   code: string;
-  kind: 'multiplayer' | 'solo';
+  kind: 'multiplayer' | 'solo' | 'challenge';
   genreId: number;
   questionMode: string;
   startedAt: Date;
@@ -71,7 +71,8 @@ function toUser(row: any): User {
 }
 
 export class DatabaseService {
-  private pool: Pool;
+  // Shared with SocialRepository
+  readonly pool: Pool;
 
   constructor(connectionString = process.env.DATABASE_URL || 'postgres://localhost/tuneduel') {
     this.pool = new Pool({

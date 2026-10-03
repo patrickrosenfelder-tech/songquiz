@@ -1,9 +1,12 @@
 import React from 'react';
 import './GameOver.css';
+import ChallengeShare from './ChallengeShare';
 
 const MODE_LABELS = { artist: 'Artist', title: 'Title', mix: 'Mix' };
 
-function GameOver({ finalScore, results, soloSummary, matchRounds, genres = [], isGuest, onRestart }) {
+const CHALLENGE_HEADLINES = { win: 'You win!', lose: 'So close', tie: "It's a tie" };
+
+function GameOver({ finalScore, results, soloSummary, challengeSummary, canChallenge, matchRounds, genres = [], isGuest, onRestart }) {
   const genreName = soloSummary ? ((genres.find((g) => g.id === soloSummary.genreId) || {}).name || '') : '';
   const modeLabel = soloSummary ? MODE_LABELS[soloSummary.questionMode] : '';
 
@@ -11,17 +14,20 @@ function GameOver({ finalScore, results, soloSummary, matchRounds, genres = [], 
     <div className="gameover-container">
       <div className="card gameover-box">
         <h2>
-          {soloSummary
+          {challengeSummary
+            ? CHALLENGE_HEADLINES[challengeSummary.outcome]
+            : soloSummary
             ? (soloSummary.personalBest ? 'New personal best!' : "That's a wrap")
             : results && results.length > 1 ? `${results[0].player} wins!` : "That's a wrap"}
         </h2>
-        <div className="final-score">
+        {/* Challenges compare both scores side by side instead */}
+        {!challengeSummary && <div className="final-score">
           <span className="score-label">{matchRounds > 1 ? `Your total · ${matchRounds} rounds` : 'Your score'}</span>
           <span className="score-value">{finalScore.toLocaleString()}</span>
           {soloSummary && soloSummary.previousBest !== null && !soloSummary.personalBest && (
             <span className="score-sub">Your best: {soloSummary.previousBest.toLocaleString()}</span>
           )}
-        </div>
+        </div>}
 
         {soloSummary && (
           <div className="solo-ranks">
@@ -36,7 +42,22 @@ function GameOver({ finalScore, results, soloSummary, matchRounds, genres = [], 
           </div>
         )}
 
-        {results && !soloSummary && (
+        {challengeSummary && (
+          <div className="solo-ranks">
+            <div className="solo-rank">
+              <span className="solo-rank-value">{challengeSummary.yourScore.toLocaleString()}</span>
+              <span className="solo-rank-label">You</span>
+            </div>
+            <div className="solo-rank">
+              <span className="solo-rank-value">{challengeSummary.challengerScore.toLocaleString()}</span>
+              <span className="solo-rank-label">{challengeSummary.challengerName}</span>
+            </div>
+          </div>
+        )}
+
+        {soloSummary?.gameId && canChallenge && <ChallengeShare gameId={soloSummary.gameId} />}
+
+        {results && !soloSummary && !challengeSummary && (
           <div className="results-section">
             <h3>Final ranking</h3>
             <div className="results-grid">

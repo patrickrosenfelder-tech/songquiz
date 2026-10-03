@@ -1,5 +1,6 @@
 import { AudioService, GENRES, QuestionType, Song, Track } from '../services/audioService';
 import { SavedGame, SavedMatch } from '../database/database';
+import { ChallengeSong } from '../database/social';
 
 export interface GameRound {
   roundNumber: number;
@@ -30,9 +31,19 @@ export interface GameSettings {
 
 export const MAX_MATCH_ROUNDS = 5;
 
+export interface ChallengeInfo {
+  id: string;
+  code: string;
+  challengerName: string;
+  challengerScore: number;
+}
+
 export interface Game {
   id: string;
-  kind: 'multiplayer' | 'solo';
+  kind: 'multiplayer' | 'solo' | 'challenge';
+  challenge?: ChallengeInfo;
+  // Challenges replay these exact songs and questions instead of a genre pool
+  fixedSongs?: ChallengeSong[];
   hostClientId: string;
   settings: GameSettings;
   players: Player[];
@@ -53,6 +64,14 @@ export interface Game {
   pickerClientId?: string;
   completedRounds: SavedGame[];
   roundStartScores: Map<string, number>;
+}
+
+function shuffle<T>(array: T[]): T[] {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
 }
 
 export class GameManager {
@@ -148,7 +167,8 @@ export class GameManager {
     const game = this.games.get(gameId);
     if (!game) throw new Error('Game not found');
     game.pickerOrder = game.players.map(p => p.clientId);
-    game.matchRounds = game.kind === 'solo' ? 1 : game.settings.roundCount;
+    // Solo and challenge games are a single 7-song round
+    game.matchRounds = game.kind === 'multiplayer' ? game.settings.roundCount : 1;
     game.matchRound = 0;
     game.matchStartedAt = new Date();
     game.completedRounds = [];
@@ -208,7 +228,9 @@ export class GameManager {
   async prepareGame(gameId: string): Promise<void> {
     const game = this.games.get(gameId);
     if (!game) throw new Error('Game not found');
-    game.songPool = await this.audioService.getSongPool(game.settings.genreId);
+    game.songPool = game.fixedSongs
+      ? game.fixedSongs.map(s => ({ id: s.trackId, deezerId: s.deezerId ?? undefined, title: s.title, artist: s.artist }))
+      : await this.audioService.getSongPool(game.settings.genreId);
     game.startedAt = new Date();
     game.nextTrackIndex = 0;
     game.rounds = [];
@@ -262,14 +284,36 @@ export class GameManager {
     return game;
   }
 
+  setChallenge(gameId: string, challenge: ChallengeInfo, songs: ChallengeSong[], genreId: number, mode: GameMode): void {
+    const game = this.games.get(gameId);
+    if (!game) return;
+    game.challenge = challenge;
+    game.fixedSongs = songs;
+    game.settings.genreId = genreId;
+    game.settings.mode = mode;
+  }
+
   // The pool is already shuffled; skip tracks that have no preview on Deezer or iTunes
   private async nextPlayableSong(game: Game): Promise<Song | null> {
     while (game.nextTrackIndex < game.songPool.length) {
-      const track = game.songPool[game.nextTrackIndex++];
+      const index = game.nextTrackIndex++;
+      const track = game.songPool[index];
       const audioUrl = await this.audioService.getPreviewUrl(track);
       if (!audioUrl) {
         console.warn(`No preview for "${track.artist} - ${track.title}", skipping`);
         continue;
+      }
+      const fixed = game.fixedSongs?.[index];
+      if (fixed) {
+        return {
+          id: track.id,
+          title: track.title,
+          artist: track.artist,
+          audioUrl,
+          questionType: fixed.questionType,
+          correctAnswer: fixed.correctAnswer,
+          options: shuffle([...fixed.options])
+        };
       }
       const questionType: QuestionType = game.settings.mode === 'mix'
         ? (Math.random() < 0.5 ? 'artist' : 'title')

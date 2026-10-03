@@ -7,8 +7,10 @@ import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import { v4 as uuidv4 } from 'uuid';
 import { GameManager, Player } from './game/gameManager';
-import { DatabaseService, LeaderboardEntry } from './database/database';
+import { DatabaseService, LeaderboardEntry, User } from './database/database';
 import { createAuthRouter, getUserFromCookieHeader } from './auth';
+import { createSocialRouter } from './social';
+import { SocialRepository } from './database/social';
 import { GENRES } from './services/audioService';
 
 const app = express();
@@ -28,7 +30,10 @@ db.initialize().then(() => {
   process.exit(1);
 });
 
+const social = new SocialRepository(db.pool);
+
 app.use('/api', createAuthRouter(db));
+app.use('/api', createSocialRouter(db, social));
 
 interface GameClient {
   id: string;
@@ -141,6 +146,10 @@ async function handleJoinGame(clientId: string, message: any, ws: any, cookieHea
     sendError('Choose a display name first.');
     return;
   }
+  if (message.challenge) {
+    await joinChallenge(clientId, String(message.challenge), String(message.userId || ''), account, ws, sendError);
+    return;
+  }
   if (!account && !message.gameId) {
     sendError('Sign in to create a game. Guests can join with a game code.');
     return;
@@ -157,8 +166,8 @@ async function handleJoinGame(clientId: string, message: any, ws: any, cookieHea
   if (message.gameId) {
     gameId = String(message.gameId).trim().toUpperCase();
     const existing = gameManager.getGameState(gameId);
-    // Solo games are private, so treat them like a wrong code
-    if (!existing || existing.kind === 'solo') {
+    // Solo and challenge games are private, so treat them like a wrong code
+    if (!existing || existing.kind !== 'multiplayer') {
       sendError(`No game found with code ${gameId}. Check the code and try again.`);
       return;
     }
@@ -205,6 +214,71 @@ async function handleJoinGame(clientId: string, message: any, ws: any, cookieHea
   }));
 
   broadcastLobby(gameId);
+}
+
+// A private one-player game replaying the challenger's 7 songs
+async function joinChallenge(
+  clientId: string,
+  code: string,
+  guestName: string,
+  account: User | null,
+  ws: any,
+  sendError: (text: string) => void
+) {
+  const challenge = await social.getChallenge(code);
+  if (!challenge) {
+    sendError('Challenge not found. Check the link.');
+    return;
+  }
+  if (challenge.expiresAt.getTime() < Date.now()) {
+    sendError('This challenge has expired.');
+    return;
+  }
+  if (account && account.id === challenge.challengerId) {
+    sendError("You can't take your own challenge.");
+    return;
+  }
+  if (challenge.targetUserId && (!account || account.id !== challenge.targetUserId)) {
+    sendError('This challenge was sent to someone else.');
+    return;
+  }
+  if (account && await social.getAttempt(challenge.id, account.id)) {
+    sendError("You've already taken this challenge.");
+    return;
+  }
+  const userId = account ? account.displayName! : guestName.trim().slice(0, 20);
+  if (!userId) {
+    sendError('Enter a name.');
+    return;
+  }
+  const songs = await social.getChallengeSongs(code);
+  if (clients.has(clientId)) return;
+
+  const gameId = gameManager.generateGameCode();
+  clients.set(clientId, { id: clientId, gameId, userId, send: (msg: string) => ws.send(msg) });
+  const game = gameManager.joinGame(gameId, userId, clientId, account ? account.id : null, 'challenge');
+  gameManager.setChallenge(
+    gameId,
+    { id: challenge.id, code: challenge.code, challengerName: challenge.challengerName, challengerScore: challenge.challengerScore },
+    songs,
+    challenge.genreId,
+    challenge.questionMode as any
+  );
+
+  ws.send(JSON.stringify({
+    type: 'game-joined',
+    gameId,
+    clientId,
+    genres: GENRES,
+    gameState: {
+      kind: game.kind,
+      players: game.players.map(publicPlayer),
+      hostClientId: game.hostClientId,
+      settings: game.settings,
+      currentRound: game.currentRound,
+      totalRounds: game.totalRounds
+    }
+  }));
 }
 
 function handleUpdateSettings(clientId: string, message: any) {
@@ -263,8 +337,8 @@ async function handlePlayerReady(clientId: string, message: any) {
 
   if (allReady) {
     gameManager.startMatch(client.gameId);
-    if (game.kind === 'solo') {
-      // Solo players chose genre and mode in the lobby
+    if (game.kind !== 'multiplayer') {
+      // Solo players chose genre and mode in the lobby; challenges use the challenger's
       gameManager.beginPick(client.gameId);
       gameManager.chooseRound(client.gameId, clientId, game.settings);
       await launchRound(client.gameId);
@@ -327,7 +401,7 @@ async function launchRound(gameId: string) {
     matchRounds: game.matchRounds,
     genreId: game.settings.genreId,
     mode: game.settings.mode,
-    pickerName: game.kind === 'solo' ? null : picker?.userId ?? null
+    pickerName: game.kind === 'multiplayer' ? picker?.userId ?? null : null
   });
 
   startingGames.add(gameId);
@@ -406,6 +480,7 @@ async function finishGame(gameId: string) {
 
   // Solo players see whether they set a personal best and where they rank
   let soloSummary = null;
+  let challengeSummary = null;
   if (game.kind === 'solo') {
     const saved = game.completedRounds[0];
     const soloAccount = game.players[0]?.accountId;
@@ -413,12 +488,14 @@ async function finishGame(gameId: string) {
       try {
         const { genreId, questionMode } = saved;
         const previousBest = await db.getBestSoloScore(soloAccount, questionMode, genreId);
-        await db.saveGame(saved);
+        const savedGameId = await db.saveGame(saved);
         const [genreBoard, overallBoard] = await Promise.all([
           db.getLeaderboard(questionMode, genreId, soloAccount, 0),
           db.getLeaderboard(questionMode, null, soloAccount, 0)
         ]);
         soloSummary = {
+          // Lets the player challenge others to this exact game
+          gameId: savedGameId,
           genreId,
           questionMode,
           previousBest,
@@ -428,6 +505,25 @@ async function finishGame(gameId: string) {
         };
       } catch (err) {
         console.error('Failed to save solo game:', err);
+      }
+    }
+  } else if (game.kind === 'challenge' && game.challenge) {
+    const saved = game.completedRounds[0];
+    const player = game.players[0];
+    if (saved && player) {
+      const yourScore = player.score;
+      const { challengerName, challengerScore } = game.challenge;
+      challengeSummary = {
+        challengerName,
+        challengerScore,
+        yourScore,
+        outcome: yourScore > challengerScore ? 'win' : yourScore < challengerScore ? 'lose' : 'tie'
+      };
+      try {
+        const savedGameId = await db.saveGame(saved);
+        await social.recordAttempt(game.challenge.id, player.accountId, player.userId, savedGameId, yourScore);
+      } catch (err) {
+        console.error('Failed to save challenge attempt:', err);
       }
     }
   } else {
@@ -441,7 +537,8 @@ async function finishGame(gameId: string) {
     type: 'game-finished',
     results,
     matchRounds: game.matchRounds,
-    solo: soloSummary
+    solo: soloSummary,
+    challenge: challengeSummary
   });
 }
 

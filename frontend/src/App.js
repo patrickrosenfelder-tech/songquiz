@@ -6,6 +6,9 @@ import SignIn from './components/SignIn';
 import DisplayNameSetup from './components/DisplayNameSetup';
 import Leaderboard from './components/Leaderboard';
 import RoundPick from './components/RoundPick';
+import ChallengeIntro from './components/ChallengeIntro';
+import Inbox from './components/Inbox';
+import Friends from './components/Friends';
 import GameScreen from './components/GameScreen';
 import GameOver from './components/GameOver';
 
@@ -18,8 +21,14 @@ function App() {
   const [config, setConfig] = useState(null);
   // Bumped after sign-in/out so the WebSocket reconnects with the new session cookie
   const [connectionKey, setConnectionKey] = useState(0);
-  // Pages outside a game: 'home' (lobby/join) or 'leaderboard'
-  const [view, setView] = useState('home');
+  // Challenge links look like ?challenge=ABCD2345
+  const [challengeCode, setChallengeCode] = useState(
+    () => new URLSearchParams(window.location.search).get('challenge')
+  );
+  // Pages outside a game: 'home' (lobby/join), 'leaderboard', 'inbox', 'friends' or 'challenge'
+  const [view, setView] = useState(() => (challengeCode ? 'challenge' : 'home'));
+  const [genres, setGenres] = useState([]);
+  const [inboxCount, setInboxCount] = useState(0);
   const [gameData, setGameData] = useState({
     gameId: null,
     clientId: null,
@@ -34,7 +43,33 @@ function App() {
   useEffect(() => {
     api('/config').then(setConfig).catch(() => setConfig({ googleClientId: null, devLogin: false }));
     api('/me').then(({ user }) => setUser(user)).catch(() => setUser(null));
+    api('/genres').then(({ genres }) => setGenres(genres)).catch(() => {});
   }, []);
+
+  // Open challenges, unseen results and friend requests
+  const refreshInboxCount = useCallback(() => {
+    api('/inbox')
+      .then((inbox) => setInboxCount(
+        inbox.challenges.length + inbox.results.filter((r) => r.unseen).length + inbox.friendRequests
+      ))
+      .catch(() => setInboxCount(0));
+  }, []);
+
+  useEffect(() => {
+    if (user && user.displayName) refreshInboxCount();
+  }, [user, refreshInboxCount]);
+
+  const goHome = () => {
+    setView('home');
+    setChallengeCode(null);
+    if (window.location.search) window.history.replaceState(null, '', window.location.pathname);
+  };
+
+  const openChallenge = (code) => {
+    setChallengeCode(code);
+    setJoinError(null);
+    setView('challenge');
+  };
 
   const handleSignedIn = useCallback((signedInUser) => {
     setUser(signedInUser);
@@ -64,6 +99,10 @@ function App() {
     websocket.onmessage = (event) => {
       const message = JSON.parse(event.data);
       handleServerMessage(message);
+      // A challenge starts as soon as it's joined; the player already pressed Accept
+      if (message.type === 'game-joined' && message.gameState.kind === 'challenge') {
+        websocket.send(JSON.stringify({ type: 'ready' }));
+      }
     };
 
     websocket.onerror = (error) => {
@@ -181,6 +220,7 @@ function App() {
         setGameData((prev) => ({
           ...prev,
           finalResults: message.results,
+          challengeSummary: message.challenge,
           matchRounds: message.matchRounds,
           soloSummary: message.solo
         }));
@@ -192,7 +232,7 @@ function App() {
   };
 
   // Without a game code the server creates a new game with this player as host
-  const joinGame = (userId, gameCode, { solo = false } = {}) => {
+  const joinGame = (userId, gameCode, { solo = false, challenge } = {}) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       setJoinError(null);
       setGameData((prev) => ({ ...prev, userId }));
@@ -200,7 +240,8 @@ function App() {
         type: 'join',
         userId: userId,
         gameId: gameCode || undefined,
-        solo
+        solo,
+        challenge
       }));
     } else {
       setJoinError("Can't reach the game server. Is it running?");
@@ -248,7 +289,13 @@ function App() {
             {user.avatarUrl && <img className="account-avatar" src={user.avatarUrl} alt="" referrerPolicy="no-referrer" />}
             <span className="account-name">{user.displayName}</span>
             {gameState === 'lobby' && !gameData.gameId && (
-              <button className="link-button" onClick={signOut}>Sign out</button>
+              <>
+                <button className="link-button header-link" onClick={() => setView('inbox')}>
+                  Inbox{inboxCount > 0 && <span className="badge">{inboxCount}</span>}
+                </button>
+                <button className="link-button" onClick={() => setView('friends')}>Friends</button>
+                <button className="link-button" onClick={signOut}>Sign out</button>
+              </>
             )}
           </div>
         )}
@@ -260,7 +307,38 @@ function App() {
         <Leaderboard onBack={() => setView('home')} />
       )}
 
-      {!needsDisplayName && user !== undefined && gameState === 'lobby' && (view === 'home' || gameData.gameId) && (
+      {!needsDisplayName && user !== undefined && gameState === 'lobby' && !gameData.gameId && view === 'challenge' && challengeCode && (
+        <ChallengeIntro
+          code={challengeCode}
+          user={user}
+          genres={genres}
+          joinError={joinError}
+          onStart={(code, guestName) => joinGame(guestName || null, '', { challenge: code })}
+          onBack={goHome}
+        />
+      )}
+
+      {!needsDisplayName && user && gameState === 'lobby' && !gameData.gameId && view === 'inbox' && (
+        <Inbox
+          genres={genres}
+          onPlayChallenge={openChallenge}
+          onShowFriends={() => setView('friends')}
+          onBack={goHome}
+          onSeen={refreshInboxCount}
+        />
+      )}
+
+      {!needsDisplayName && user && gameState === 'lobby' && !gameData.gameId && view === 'friends' && (
+        <Friends onBack={goHome} onChange={refreshInboxCount} />
+      )}
+
+      {gameState === 'lobby' && gameData.kind === 'challenge' && (
+        <div className="lobby-container">
+          <div className="card lobby-box"><h2>Get ready…</h2><p className="description">Loading the challenge songs.</p></div>
+        </div>
+      )}
+
+      {!needsDisplayName && user !== undefined && gameState === 'lobby' && gameData.kind !== 'challenge' && (view === 'home' || gameData.gameId) && (
         <GameLobby
           gameKind={gameData.kind}
           onShowLeaderboard={() => setView('leaderboard')}
@@ -308,6 +386,8 @@ function App() {
           finalScore={gameData.score}
           results={gameData.finalResults}
           soloSummary={gameData.soloSummary}
+          challengeSummary={gameData.challengeSummary}
+          canChallenge={!!user}
           matchRounds={gameData.matchRounds}
           genres={gameData.genres}
           isGuest={!user}

@@ -101,6 +101,15 @@ Starts the backend (port 8080, restarts on code changes) and the React dev serve
 - After a solo game you see whether it's a personal best and your rank in that genre and overall
 - Multiplayer and guest games are saved but don't count toward leaderboards
 
+## Challenges and Friends
+
+- **Beat my score**: after a solo game, challenge others to the exact same 7 songs, questions and answer options
+- **Send it** as a link (anyone can play it, guests too), to any player by name, or to friends with one tap
+- Challenges expire after 7 days; each signed-in player gets one attempt; you can't take your own
+- **Inbox** (header): challenges sent to you, results of your challenges, and friend requests, with an unread count
+- **Friends**: search players by name, send and accept requests, remove friends
+- Challenge games are saved but don't count toward leaderboards
+
 ## Multiplayer Matches
 
 1. **Create**: Sign in and click "Play with friends". You're the host 👑
@@ -120,7 +129,7 @@ Songs come from Deezer's genre charts, with iTunes as a fallback for audio and a
 ### WebSocket Messages
 
 **Client to Server:**
-- `join`: Join a game by code (`gameId`), or create one when no code is given (`solo: true` for a private solo game)
+- `join`: Join a game by code (`gameId`), create one when no code is given (`solo: true` for a private solo game), or take a challenge (`challenge: code`)
 - `update-settings`: Host changes the genre (`genreId`) or mode (`artist`/`title`/`mix`) for solo, or `roundCount` for multiplayer
 - `pick-round`: The current picker chooses the round's `genreId` and `mode`
 - `ready`: Player is ready; the game starts when everyone is
@@ -135,7 +144,7 @@ Songs come from Deezer's genre charts, with iTunes as a fallback for audio and a
 - `round-started`: New song with audio, question type, options, and match round
 - `answer-recorded`: Your answer's result (sent only to you)
 - `round-ended`: Correct answer and scores; next round follows after 5s
-- `game-finished`: Final results, plus personal best and ranks for solo games
+- `game-finished`: Final results, plus personal best and ranks for solo games, or the head-to-head result for challenges
 
 ### REST Endpoints
 
@@ -149,6 +158,11 @@ Songs come from Deezer's genre charts, with iTunes as a fallback for audio and a
 - `POST /api/auth/dev` - Local-only test sign-in (disabled in production)
 - `POST /api/auth/logout` - Sign out
 - `PUT /api/me/display-name` - Set your display name
+- `GET /api/users/search?q=` - Find players by name (signed in)
+- `GET /api/friends`, `POST /api/friends` (`{ userId }`), `POST /api/friends/:id/accept`, `DELETE /api/friends/:id` - Friends and requests
+- `POST /api/challenges` (`{ gameId, userIds? }`) - Challenge with one of your solo games; without `userIds` returns a shareable link code
+- `GET /api/challenges/:code` - Challenge details (public)
+- `GET /api/inbox`, `POST /api/inbox/seen` - Inbox and marking results as seen
 
 ## Database Schema
 
@@ -160,6 +174,8 @@ Postgres, with migrations in `backend/src/database/migrations.ts` applied at sta
 - **game_players**: final ranking per game; `user_id` is empty for guests
 - **game_songs**: the songs played, with the answer options shown
 - **answers**: every answer with points and answer time
+- **friendships**: friend requests and accepted friendships
+- **challenges** / **challenge_attempts**: beat-my-score challenges built from a solo game, and everyone's attempts
 - **matches** / **match_players**: multiplayer matches and final totals; each round is a `games` row with `match_id` and `match_round`
 
 ## Running Tests
